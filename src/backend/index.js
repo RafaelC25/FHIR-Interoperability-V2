@@ -17,7 +17,25 @@ const db = mysql.createConnection({
 // Middlewares
 app.use(cors());
 app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
 
+// =============================================
+// MIDDLEWARE DE AUTENTICACIÓN
+// =============================================
+const authenticateToken = (req, res, next) => {
+  const token = req.headers['authorization'];
+  if (!token) return res.status(401).json({ error: 'Token no proporcionado' });
+
+  // Aquí iría tu lógica de verificación del token JWT
+  // Por ahora usaremos un mock
+  try {
+    const user = { id: 1, role: 'admin' }; // Mock user
+    req.user = user;
+    next();
+  } catch (error) {
+    res.status(403).json({ error: 'Token inválido' });
+  }
+};
 // Ruta para login
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
@@ -263,6 +281,173 @@ app.delete('/api/users/:id', (req, res) => {
     });
   });
 });
+// Obtener todos los roles
+app.get('/api/roles', (req, res) => {
+  const query = 'SELECT id, nombre FROM rol'; // Eliminamos descripcion de la consulta
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error('Error al obtener roles:', err.message);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Error en el servidor', 
+        error: err.message 
+      });
+    }
+
+    res.json({
+      success: true,
+      data: results
+    });
+  });
+});
+
+// Crear un nuevo rol
+app.post('/api/roles', (req, res) => {
+  const { nombre } = req.body; // Solo recibimos nombre
+
+  if (!nombre) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'El nombre es requerido'
+    });
+  }
+
+  const query = 'INSERT INTO rol (nombre) VALUES (?)';
+  
+  db.query(query, [nombre], (err, results) => {
+    // ... resto del código igual
+  });
+});
+
+// Actualizar un rol
+app.put('/api/roles/:id', (req, res) => {
+  const roleId = req.params.id;
+  const { nombre, descripcion } = req.body;
+
+  if (!nombre) {
+    return res.status(400).json({ 
+      success: false, 
+      message: 'El nombre es requerido',
+      details: {
+        nombre: !nombre ? 'Campo requerido' : undefined
+      }
+    });
+  }
+
+  const query = 'UPDATE rol SET nombre = ?, descripcion = ? WHERE id = ?';
+  
+  db.query(query, [nombre, descripcion || null, roleId], (err, results) => {
+    if (err) {
+      console.error('Error al actualizar rol:', err);
+      
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(400).json({
+          success: false,
+          message: 'El nombre de rol ya existe'
+        });
+      }
+      
+      return res.status(500).json({ 
+        success: false,
+        message: 'Error en el servidor',
+        error: err.message
+      });
+    }
+
+    if (results.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Rol no encontrado'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Rol actualizado exitosamente',
+      role: {
+        id: roleId,
+        nombre,
+        descripcion: descripcion || null
+      }
+    });
+  });
+});
+
+// Eliminar un rol
+app.delete('/api/roles/:id', (req, res) => {
+  const roleId = req.params.id;
+
+  // Primero verificamos si el rol está siendo usado por algún usuario
+  const checkQuery = 'SELECT COUNT(*) as count FROM usuario WHERE rol_id = ?';
+  
+  db.query(checkQuery, [roleId], (err, results) => {
+    if (err) {
+      console.error('Error al verificar uso del rol:', err);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Error en el servidor',
+        error: err.message
+      });
+    }
+
+    if (results[0].count > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No se puede eliminar el rol porque está asignado a usuarios'
+      });
+    }
+
+    // Si no está siendo usado, procedemos a eliminar
+    const deleteQuery = 'DELETE FROM rol WHERE id = ?';
+    
+    db.query(deleteQuery, [roleId], (err, results) => {
+      if (err) {
+        console.error('Error al eliminar rol:', err);
+        return res.status(500).json({ 
+          success: false,
+          message: 'Error en el servidor',
+          error: err.message
+        });
+      }
+
+      if (results.affectedRows === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'Rol no encontrado'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Rol eliminado exitosamente',
+        roleId: roleId
+      });
+    });
+  });
+});
+
+// En tu backend (index.js), agrega rutas que combinen datos FHIR con tu DB local
+app.get('/api/combined/patients', async (req, res) => {
+  try {
+    // Datos locales
+    const localPatients = await db.query('SELECT * FROM pacientes');
+    
+    // Datos FHIR
+    const fhirPatients = await searchPatients(); // Usa tu función existente
+    
+    // Combinar datos
+    const combined = localPatients.map(local => {
+      const fhirMatch = fhirPatients.find(f => f.id === local.fhir_id);
+      return { ...local, ...fhirMatch };
+    });
+    
+    res.json(combined);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
 
 // Iniciar servidor
 app.listen(PORT, () => {

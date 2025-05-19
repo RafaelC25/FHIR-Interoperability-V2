@@ -201,3 +201,28 @@ export async function deleteDoctor(id: string): Promise<void> {
     headers
   });
 }
+
+// Servicio de sincronización periódica
+export async function syncFHIRData() {
+  try {
+    const [patients, doctors, appointments] = await Promise.all([
+      searchPatients(),
+      searchDoctors(),
+      searchAppointments()
+    ]);
+    
+    // Guardar en tu base de datos local
+    await db.query('INSERT INTO fhir_cache (type, data) VALUES ?', [
+      ['patients', JSON.stringify(patients)],
+      ['doctors', JSON.stringify(doctors)],
+      ['appointments', JSON.stringify(appointments)]
+    ]);
+    
+    console.log('Datos FHIR sincronizados');
+  } catch (error) {
+    console.error('Error sincronizando FHIR:', error);
+  }
+}
+
+// Ejecutar cada hora
+setInterval(syncFHIRData, 3600000);
