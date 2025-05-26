@@ -1,10 +1,14 @@
 const express = require('express');
 const cors = require('cors');
+const router = express.Router();
 const mysql = require('mysql2');
 const bodyParser = require('body-parser');
+const doctorsRouter = require('./routes/doctors');
 
 const app = express();
 const PORT = 3001;
+
+
 
 // Conexión a MySQL
 const db = mysql.createConnection({
@@ -14,10 +18,19 @@ const db = mysql.createConnection({
   database: 'parcial_int',
 });
 
+
+
+// Importar rutas
+//const usersRouter = require('./routes/users'); 
+//const doctorsRouter = require('./routes/doctors'); 
+
 // Middlewares
 app.use(cors());
+app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+
+app.use('/api/doctors', doctorsRouter);
 
 // =============================================
 // MIDDLEWARE DE AUTENTICACIÓN
@@ -26,8 +39,7 @@ const authenticateToken = (req, res, next) => {
   const token = req.headers['authorization'];
   if (!token) return res.status(401).json({ error: 'Token no proporcionado' });
 
-  // Aquí iría tu lógica de verificación del token JWT
-  // Por ahora usaremos un mock
+  
   try {
     const user = { id: 1, role: 'admin' }; // Mock user
     req.user = user;
@@ -36,6 +48,12 @@ const authenticateToken = (req, res, next) => {
     res.status(403).json({ error: 'Token inválido' });
   }
 };
+
+// Ruta de prueba básica
+app.get('/', (req, res) => {
+  res.send('API funcionando');
+});
+
 // Ruta para login
 app.post('/login', (req, res) => {
   const { username, password } = req.body;
@@ -424,6 +442,21 @@ app.delete('/api/roles/:id', (req, res) => {
       });
     });
   });
+});
+
+// Obtener usuarios por rol
+router.get('/api/users', async (req, res) => {
+  const { rol } = req.query;
+  let query = 'SELECT id, nombre, email, rol_id FROM usuario';
+  const params = [];
+  
+  if (rol) {
+    query += ' WHERE rol_id = ?';
+    params.push(rol);
+  }
+
+  const [users] = await db.query(query, params);
+  res.json(users);
 });
 
 // En tu backend (index.js), agrega rutas que combinen datos FHIR con tu DB local

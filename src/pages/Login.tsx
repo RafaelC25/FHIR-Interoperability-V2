@@ -1,17 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const [username, setUsername] = useState('');
-  const [password, setPassword] = useState(''); // Ahora también pedimos contraseña
-  const { login } = useAuth();
+  const [password, setPassword] = useState('');
+  const { login, isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState<string | null>(null);
 
+  // Redirigir si ya está autenticado
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/');
+    }
+  }, [isAuthenticated, navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null); // Limpiar errores anteriores
+    setError(null);
 
     try {
       const response = await fetch('http://localhost:3001/login', {
@@ -27,13 +34,30 @@ export default function Login() {
       }
 
       const data = await response.json();
-      login(data.username, data.role);
-      navigate('/');
+      
+      // Verificar que el rol sea uno de los permitidos
+      if (!['admin', 'physician', 'patient'].includes(data.role)) {
+        throw new Error('Rol de usuario no válido');
+      }
+
+      await login(data.username, data.role);
+      
     } catch (err: any) {
       console.error('Error al iniciar sesión:', err);
       setError(err.message || 'Error al iniciar sesión');
     }
   };
+
+  // Mostrar loading mientras se verifica la autenticación
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <p>Verificando sesión...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -78,7 +102,7 @@ export default function Login() {
           </div>
 
           {error && (
-            <div className="text-red-500 text-sm">
+            <div className="text-red-500 text-sm text-center py-2">
               {error}
             </div>
           )}
@@ -87,8 +111,9 @@ export default function Login() {
             <button
               type="submit"
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              disabled={loading}
             >
-              Ingresar
+              {loading ? 'Ingresando...' : 'Ingresar'}
             </button>
           </div>
         </form>

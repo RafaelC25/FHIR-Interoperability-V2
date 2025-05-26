@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit, Trash2, Eye } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
+import { useNavigate } from 'react-router-dom';
+
 
 interface User {
   id: number;
@@ -17,6 +19,12 @@ interface UserFormData {
   rol_id: number;
   contraseña: string;
   activo: boolean;
+  // Añadir estos nuevos campos
+  especialidad?: string;
+  numero_identificacion?: string;
+  fecha_nacimiento?: string;
+  telefono?: string;
+  direccion?: string;
 }
 
 const roleNames: { [key: number]: string } = {
@@ -30,7 +38,12 @@ const emptyFormData: UserFormData = {
   email: '',
   rol_id: 2,
   contraseña: '',
-  activo: true
+  activo: true,
+  especialidad: '',
+  numero_identificacion: '',
+  fecha_nacimiento: '',
+  telefono: '',
+  direccion: ''
 };
 
 const UserForm = ({ 
@@ -163,27 +176,30 @@ export default function Users() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
-  const fetchUsers = async () => {
-    setIsLoading(true);
-    try {
-      const response = await fetch('http://localhost:3001/api/users');
-      if (!response.ok) {
-        throw new Error('Error al cargar usuarios');
-      }
-      const data = await response.json();
-      setUsers(data);
-    } catch (error) {
-      console.error('Error al cargar usuarios:', error);
-      setError(error.message);
-    } finally {
-      setIsLoading(false);
+const fetchUsers = async () => {
+  setIsLoading(true);
+  try {
+    const response = await fetch('http://localhost:3001/api/users');
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-  };
+    const data = await response.json();
+    setUsers(data);
+    setError(null);
+  } catch (error) {
+    console.error('Error al cargar usuarios:', error);
+    setError('No se pudieron cargar los usuarios. Intente recargar la página.');
+    // Mantener los datos existentes si hay error
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const clearMessages = () => {
     setError(null);
@@ -206,41 +222,84 @@ export default function Users() {
     }));
   };
 
-  const handleCreateSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    clearMessages();
-    setIsLoading(true);
-  
-    try {
-      const response = await fetch('http://localhost:3001/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: formData.nombre,
-          email: formData.email,
-          contrasena: formData.contraseña,
-          rol_id: formData.rol_id,
-          activo: formData.activo
-        }),
-      });
-  
-      const data = await response.json();
-  
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al crear usuario');
-      }
-  
-      setSuccess('Usuario creado exitosamente');
-      fetchUsers();
-      setFormData(emptyFormData);
-      setTimeout(() => setIsCreateModalOpen(false), 1500);
-    } catch (error) {
-      console.error('Error:', error);
-      setError(error.message || 'Error al crear usuario');
-    } finally {
-      setIsLoading(false);
+const handleCreateSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  clearMessages();
+  setIsLoading(true);
+
+  try {
+    // 1. Crear el usuario en el backend
+    const userResponse = await fetch('http://localhost:3001/api/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nombre: formData.nombre,
+        email: formData.email,
+        contrasena: formData.contraseña,
+        rol_id: formData.rol_id,
+        activo: formData.activo
+      }),
+    });
+
+    const userData = await userResponse.json();
+
+    if (!userResponse.ok) {
+      throw new Error(userData.message || 'Error al crear usuario');
     }
-  };
+
+    // 2. Actualizar el estado local inmediatamente (optimistic update)
+    setUsers(prevUsers => [...prevUsers, {
+      id: userData.id,
+      nombre: formData.nombre,
+      email: formData.email,
+      rol_id: formData.rol_id,
+      activo: formData.activo
+    }]);
+
+    // 3. Redirigir o mostrar éxito
+    if (formData.rol_id === 2) { // Médico
+      navigate('/doctors/create', { 
+        state: { 
+          user_id: userData.id,
+          userData: {
+            nombre: formData.nombre,
+            email: formData.email
+          }
+        }
+      });
+    } 
+    else if (formData.rol_id === 3) { // Paciente
+      navigate('/patients/create', { 
+        state: { 
+          user_id: userData.id,
+          userData: {
+            nombre: formData.nombre,
+            email: formData.email
+          }
+        }
+      });
+    }
+    else {
+      // Para otros roles (admin, etc.)
+      setSuccess('Usuario creado exitosamente');
+      setFormData(emptyFormData);
+      setIsCreateModalOpen(false);
+      
+      // Recargar datos del servidor para asegurar consistencia
+      await fetchUsers();
+    }
+
+  } catch (error) {
+    console.error('Error:', error);
+    setError(error.message || 'Error al crear usuario');
+    
+    // Revertir el optimistic update en caso de error
+    setUsers(prevUsers => prevUsers.filter(user => user.id !== userData?.id));
+    
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
