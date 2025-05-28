@@ -332,19 +332,49 @@ app.get('/api/roles', (req, res) => {
 
 // Crear un nuevo rol
 app.post('/api/roles', (req, res) => {
-  const { nombre } = req.body; // Solo recibimos nombre
+  const { nombre } = req.body;
 
   if (!nombre) {
     return res.status(400).json({ 
       success: false, 
-      message: 'El nombre es requerido'
+      message: 'El nombre es requerido',
+      details: {
+        nombre: !nombre ? 'Campo requerido' : undefined
+      }
     });
   }
 
   const query = 'INSERT INTO rol (nombre) VALUES (?)';
   
   db.query(query, [nombre], (err, results) => {
-    // ... resto del código igual
+    if (err) {
+      console.error('Error al crear rol:', err);
+      
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(400).json({
+          success: false,
+          message: 'El nombre de rol ya existe'
+        });
+      }
+      
+      return res.status(500).json({ 
+        success: false,
+        message: 'Error en el servidor',
+        error: err.message
+      });
+    }
+
+    // Devuelve el nuevo rol creado con su ID
+    const newRole = {
+      id: results.insertId,
+      nombre: nombre
+    };
+
+    res.status(201).json({
+      success: true,
+      message: 'Rol creado exitosamente',
+      data: newRole
+    });
   });
 });
 

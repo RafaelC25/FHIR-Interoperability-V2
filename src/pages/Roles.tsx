@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Plus, Edit, Trash2, Eye } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -16,6 +16,59 @@ const emptyFormData: RoleFormData = {
   nombre: ''
 };
 
+const RoleForm = React.memo(({ 
+  onSubmit, 
+  buttonText,
+  formData,
+  onInputChange,
+  isLoading,
+  error
+}: { 
+  onSubmit: (e: React.FormEvent) => void; 
+  buttonText: string;
+  formData: RoleFormData;
+  onInputChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  isLoading: boolean;
+  error: string | null;
+}) => {
+  return (
+    <form onSubmit={onSubmit} className="space-y-4">
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md">
+          {error}
+        </div>
+      )}
+      
+      <div>
+        <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-1">
+          Nombre del Rol
+        </label>
+        <input
+          type="text"
+          id="nombre"
+          name="nombre"
+          value={formData.nombre}
+          onChange={onInputChange}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+          required
+          disabled={isLoading}
+          autoFocus
+        />
+      </div>
+
+      <div className="pt-4">
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+        >
+          {isLoading ? 'Procesando...' : buttonText}
+        </button>
+      </div>
+    </form>
+  );
+});
+
 export default function Roles() {
   const [roles, setRoles] = useState<Role[]>([]);
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
@@ -28,8 +81,7 @@ export default function Roles() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Función para cargar roles desde la API
-  const fetchRoles = async () => {
+  const fetchRoles = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
@@ -49,11 +101,11 @@ export default function Roles() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchRoles();
-  }, []);
+  }, [fetchRoles]);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,26 +117,31 @@ export default function Roles() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}` // Asume que guardas el token en localStorage
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify(formData)
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Error en la solicitud');
+      }
+
       const data = await response.json();
       
-      if (!response.ok || !data.success) {
+      if (!data.success) {
         throw new Error(data.message || 'Error al crear rol');
       }
 
       setSuccess('Rol creado exitosamente');
-      await fetchRoles();
       setFormData(emptyFormData);
-      setIsCreateModalOpen(false);
+      await fetchRoles();
     } catch (error) {
       console.error('Error:', error);
-      setError(error.message);
+      setError(error.message || 'Error desconocido al crear rol');
     } finally {
       setIsLoading(false);
+      setIsCreateModalOpen(false);
     }
   };
 
@@ -151,6 +208,14 @@ export default function Roles() {
     }
   };
 
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  }, []);
+
   const openEditModal = (role: Role) => {
     setSelectedRole(role);
     setFormData({
@@ -171,56 +236,6 @@ export default function Roles() {
     setIsDeleteDialogOpen(true);
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const RoleForm = ({ 
-    onSubmit, 
-    buttonText 
-  }: { 
-    onSubmit: (e: React.FormEvent) => void; 
-    buttonText: string; 
-  }) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-md">
-          {error}
-        </div>
-      )}
-      
-      <div>
-        <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-1">
-          Nombre del Rol
-        </label>
-        <input
-          type="text"
-          id="nombre"
-          name="nombre"
-          value={formData.nombre}
-          onChange={handleInputChange}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          required
-          disabled={isLoading}
-        />
-      </div>
-
-      <div className="pt-4">
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-        >
-          {isLoading ? 'Procesando...' : buttonText}
-        </button>
-      </div>
-    </form>
-  );
-
   return (
     <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
@@ -228,9 +243,9 @@ export default function Roles() {
         <button
           onClick={() => {
             setFormData(emptyFormData);
-            setIsCreateModalOpen(true);
             setError(null);
             setSuccess(null);
+            setIsCreateModalOpen(true);
           }}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700 transition-colors"
           disabled={isLoading}
@@ -310,7 +325,14 @@ export default function Roles() {
         onClose={() => setIsCreateModalOpen(false)} 
         title="Crear Nuevo Rol"
       >
-        <RoleForm onSubmit={handleCreateSubmit} buttonText="Crear Rol" />
+        <RoleForm 
+          onSubmit={handleCreateSubmit} 
+          buttonText="Crear Rol"
+          formData={formData}
+          onInputChange={handleInputChange}
+          isLoading={isLoading}
+          error={error}
+        />
       </Modal>
 
       {/* Modal para editar rol */}
@@ -319,7 +341,14 @@ export default function Roles() {
         onClose={() => setIsEditModalOpen(false)} 
         title="Editar Rol"
       >
-        <RoleForm onSubmit={handleEditSubmit} buttonText="Guardar Cambios" />
+        <RoleForm 
+          onSubmit={handleEditSubmit} 
+          buttonText="Guardar Cambios"
+          formData={formData}
+          onInputChange={handleInputChange}
+          isLoading={isLoading}
+          error={error}
+        />
       </Modal>
 
       {/* Modal para ver detalles */}
