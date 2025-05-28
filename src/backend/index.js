@@ -4,6 +4,8 @@ const router = express.Router();
 const mysql = require('mysql2');
 const bodyParser = require('body-parser');
 const doctorsRouter = require('./routes/doctors');
+const patientsRouter = require('./routes/patients');
+
 
 const app = express();
 const PORT = 3001;
@@ -31,6 +33,12 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use('/api/doctors', doctorsRouter);
+app.use('/api/patients', patientsRouter);
+
+
+// Middleware
+app.use(express.json());
+
 
 // =============================================
 // MIDDLEWARE DE AUTENTICACIÓN
@@ -480,7 +488,11 @@ app.get('/api/combined/patients', async (req, res) => {
   }
 });
 
-
+// Manejo de errores
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send('Algo salió mal!');
+});
 
 // Iniciar servidor
 app.listen(PORT, () => {

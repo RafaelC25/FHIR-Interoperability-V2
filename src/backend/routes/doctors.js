@@ -1,29 +1,104 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
+
+// Configuración FHIR
+const FHIR_BASE_URL = 'https://hapi.fhir.org/baseR4';
+const FHIR_HEADERS = {
+  'Content-Type': 'application/json'
+};
+
+// Helper para convertir médico local a recurso FHIR Practitioner
+const localDoctorToFhirPractitioner = (localDoctor) => {
+  const nombreCompleto = localDoctor.usuario?.nombre || `Doctor ${localDoctor.id}`;
+  const [givenName, ...familyNames] = nombreCompleto.split(' ');
+  
+  return {
+    resourceType: 'Practitioner',
+    id: localDoctor.fhir_id || uuidv4(),
+    identifier: [{
+      system: 'http://hospital.local/ids',
+      value: localDoctor.id.toString()
+    }],
+    name: [{
+      use: 'official',
+      given: [givenName],
+      family: familyNames.join(' ') || 'Unknown'
+    }],
+    telecom: [{
+      system: 'email',
+      value: localDoctor.usuario?.email || 'unknown@hospital.com'
+    }],
+    qualification: [{
+      identifier: [{
+        system: 'http://hospital.local/qualifications',
+        value: 'MD'
+      }],
+      code: {
+        coding: [{
+          system: 'http://snomed.info/sct',
+          code: '309343006', // Código SNOMED para Physician
+          display: 'Physician'
+        }],
+        text: localDoctor.especialidad
+      },
+      period: {
+        start: new Date().toISOString()
+      }
+    }]
+  };
+};
+
+// Helper para sincronizar con FHIR
+const syncDoctorToFHIR = async (localDoctor, method = 'PUT') => {
+  try {
+    const fhirPractitioner = localDoctorToFhirPractitioner(localDoctor);
+    const url = `${FHIR_BASE_URL}/Practitioner/${fhirPractitioner.id}`;
+    
+    const response = await axios({
+      method,
+      url,
+      headers: FHIR_HEADERS,
+      data: fhirPractitioner
+    });
+
+    return response.data;
+  } catch (error) {
+    console.error('Error sincronizando con FHIR:', error.message);
+    throw error;
+  }
+};
 
 // GET /api/doctors - Obtener todos los médicos
 router.get('/', async (req, res) => {
   try {
     const query = `
-      SELECT m.id, m.especialidad, u.id as usuario_id, u.nombre, u.email 
+      SELECT 
+        m.id,
+        m.especialidad,
+        m.fhir_id,
+        m.usuario_id,
+        u.nombre,
+        u.email
       FROM medico m
-      LEFT JOIN usuario u ON m.usuario_id = u.id
+      INNER JOIN usuario u ON m.usuario_id = u.id
+      WHERE u.rol_id = 2
     `;
     const [medicos] = await db.query(query);
     
-    // Estructura de respuesta modificada para mayor consistencia
     res.status(200).json({
       success: true,
       data: medicos.map(medico => ({
         id: medico.id,
         usuario_id: medico.usuario_id,
         especialidad: medico.especialidad,
-        usuario: medico.usuario_id ? {
+        usuario: {
           id: medico.usuario_id,
           nombre: medico.nombre,
           email: medico.email
-        } : null
+        }
       }))
     });
   } catch (error) {
@@ -36,6 +111,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// POST /api/doctors - Crear nuevo médico
 router.post('/', async (req, res) => {
   const { usuario_id, especialidad } = req.body;
   let connection;
@@ -44,59 +120,107 @@ router.post('/', async (req, res) => {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
-    // Validación del rol médico
-    if (usuario_id) {
-      const [usuario] = await connection.query(
-        'SELECT rol_id FROM usuario WHERE id = ?',
-        [usuario_id]
-      );
-      
-      if (usuario.length === 0 || usuario[0].rol_id !== 2) {
-        await connection.rollback();
-        return res.status(400).json({ 
-          success: false,
-          message: 'El usuario no tiene rol de médico' 
-        });
-      }
-    }
-
-    // Insertar médico
-    const [result] = await connection.query(
-      'INSERT INTO medico (usuario_id, especialidad) VALUES (?, ?)',
-      [usuario_id || null, especialidad]
+    // 1. Verificar que el usuario existe y es médico
+    const [usuario] = await connection.query(
+      `SELECT id, nombre, email 
+       FROM usuario 
+       WHERE id = ? AND rol_id = 2`, 
+      [usuario_id]
     );
 
-    // Obtener médico creado
-    const [medico] = await connection.query(`
-      SELECT m.id, m.especialidad, u.id as usuario_id, u.nombre, u.email 
-      FROM medico m
-      LEFT JOIN usuario u ON m.usuario_id = u.id
-      WHERE m.id = ?
-    `, [result.insertId]);
+    if (!usuario || usuario.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'El usuario no existe o no tiene rol médico'
+      });
+    }
+
+    // 2. Insertar en la tabla medico
+    const [result] = await connection.query(
+      `INSERT INTO medico (usuario_id, especialidad) 
+       VALUES (?, ?)`,
+      [usuario_id, especialidad]
+    );
+
+    // 3. Obtener el médico recién creado con los datos del usuario
+    const [medico] = await connection.query(
+      `SELECT m.id, m.especialidad, m.usuario_id,
+              u.nombre, u.email
+       FROM medico m
+       JOIN usuario u ON m.usuario_id = u.id
+       WHERE m.id = ?`,
+      [result.insertId]
+    );
+
+    // 4. Crear en FHIR (opcional)
+    try {
+      const fhirDoctor = {
+        resourceType: 'Practitioner',
+        identifier: [{
+          system: 'http://hospital.local/ids',
+          value: medico[0].id.toString()
+        }],
+        name: [{
+          given: [medico[0].nombre.split(' ')[0]],
+          family: medico[0].nombre.split(' ').slice(1).join(' ') || 'Unknown'
+        }],
+        telecom: [{
+          system: 'email',
+          value: medico[0].email
+        }],
+        qualification: [{
+          code: {
+            text: medico[0].especialidad
+          }
+        }]
+      };
+
+      const fhirResponse = await axios.post(
+        `${FHIR_BASE_URL}/Practitioner`, 
+        fhirDoctor,
+        { headers: FHIR_HEADERS }
+      );
+
+      // Actualizar con fhir_id si es necesario
+      await connection.query(
+        'UPDATE medico SET fhir_id = ? WHERE id = ?',
+        [fhirResponse.data.id, result.insertId]
+      );
+    } catch (fhirError) {
+      console.error('Error con FHIR:', fhirError.message);
+      // No hacemos rollback por error en FHIR
+    }
 
     await connection.commit();
 
+    // 5. Responder con los datos completos
     res.status(201).json({
       success: true,
-      message: 'Médico creado exitosamente',
       data: {
         id: medico[0].id,
         usuario_id: medico[0].usuario_id,
         especialidad: medico[0].especialidad,
-        usuario: medico[0].usuario_id ? {
+        usuario: {
           id: medico[0].usuario_id,
           nombre: medico[0].nombre,
           email: medico[0].email
-        } : null
+        }
       }
     });
+
   } catch (error) {
     if (connection) await connection.rollback();
-    console.error('Error al crear médico:', error);
-    res.status(500).json({ 
+    console.error('Error completo:', error);
+    
+    res.status(500).json({
       success: false,
       message: 'Error al crear médico',
-      error: error.message 
+      error: error.message,
+      details: process.env.NODE_ENV === 'development' ? {
+        stack: error.stack,
+        sqlError: error.sqlMessage
+      } : undefined
     });
   } finally {
     if (connection) connection.release();
@@ -109,60 +233,69 @@ router.put('/:id', async (req, res) => {
   const { especialidad } = req.body;
   let connection;
 
-  if (!especialidad) {
-    return res.status(400).json({ 
-      success: false,
-      message: 'La especialidad es requerida' 
-    });
-  }
-
   try {
     connection = await db.getConnection();
     await connection.beginTransaction();
 
+    // 1. Actualizar especialidad
     const [result] = await connection.query(
-      'UPDATE medico SET especialidad = ? WHERE id = ?',
+      `UPDATE medico SET especialidad = ? 
+       WHERE id = ?`,
       [especialidad, id]
     );
 
     if (result.affectedRows === 0) {
       await connection.rollback();
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
-        message: 'Médico no encontrado' 
+        message: 'Médico no encontrado'
       });
     }
 
-    const [medico] = await connection.query(`
-      SELECT m.id, m.especialidad, u.id as usuario_id, u.nombre, u.email 
-      FROM medico m
-      LEFT JOIN usuario u ON m.usuario_id = u.id
-      WHERE m.id = ?
-    `, [id]);
+    // 2. Obtener datos actualizados
+    const [medico] = await connection.query(
+      `SELECT m.id, m.especialidad, m.usuario_id,
+              u.nombre, u.email
+       FROM medico m
+       JOIN usuario u ON m.usuario_id = u.id
+       WHERE m.id = ?`,
+      [id]
+    );
+
+    // 3. Actualizar en FHIR (opcional)
+    if (medico[0].fhir_id) {
+      try {
+        await axios.put(
+          `${FHIR_BASE_URL}/Practitioner/${medico[0].fhir_id}`,
+          {
+            resourceType: 'Practitioner',
+            id: medico[0].fhir_id,
+            qualification: [{
+              code: {
+                text: especialidad
+              }
+            }]
+          },
+          { headers: FHIR_HEADERS }
+        );
+      } catch (fhirError) {
+        console.error('Error actualizando en FHIR:', fhirError);
+      }
+    }
 
     await connection.commit();
 
     res.json({
       success: true,
-      message: 'Médico actualizado exitosamente',
-      data: {
-        id: medico[0].id,
-        usuario_id: medico[0].usuario_id,
-        especialidad: medico[0].especialidad,
-        usuario: medico[0].usuario_id ? {
-          id: medico[0].usuario_id,
-          nombre: medico[0].nombre,
-          email: medico[0].email
-        } : null
-      }
+      data: medico[0]
     });
+
   } catch (error) {
     if (connection) await connection.rollback();
-    console.error('Error al actualizar médico:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       message: 'Error al actualizar médico',
-      error: error.message 
+      error: error.message
     });
   } finally {
     if (connection) connection.release();
@@ -172,31 +305,71 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/doctors/:id - Eliminar médico
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
+  let connection;
 
   try {
-    const [result] = await db.query(
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    // 1. Primero obtener el médico para tener el usuario_id
+    const [medico] = await connection.query(
+      'SELECT usuario_id, fhir_id FROM medico WHERE id = ?',
+      [id]
+    );
+
+    if (medico.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Médico no encontrado'
+      });
+    }
+
+    // 2. Eliminar el médico
+    const [result] = await connection.query(
       'DELETE FROM medico WHERE id = ?',
       [id]
     );
 
     if (result.affectedRows === 0) {
-      return res.status(404).json({ 
+      await connection.rollback();
+      return res.status(404).json({
         success: false,
-        message: 'Médico no encontrado' 
+        message: 'No se pudo eliminar el médico'
       });
     }
 
+    // 3. Opcional: Eliminar de FHIR
+    if (medico[0].fhir_id) {
+      try {
+        await axios.delete(
+          `${FHIR_BASE_URL}/Practitioner/${medico[0].fhir_id}`,
+          { headers: FHIR_HEADERS }
+        );
+      } catch (fhirError) {
+        console.error('Error eliminando de FHIR:', fhirError.message);
+        // No hacemos rollback por error en FHIR
+      }
+    }
+
+    await connection.commit();
+
     res.json({
       success: true,
-      message: 'Médico eliminado exitosamente'
+      message: 'Médico eliminado correctamente',
+      deletedUserId: medico[0].usuario_id // Importante para el frontend
     });
+
   } catch (error) {
-    console.error('Error al eliminar médico:', error);
-    res.status(500).json({ 
+    if (connection) await connection.rollback();
+    console.error('Error en DELETE:', error);
+    res.status(500).json({
       success: false,
       message: 'Error al eliminar médico',
-      error: error.message 
+      error: error.message
     });
+  } finally {
+    if (connection) connection.release();
   }
 });
 
