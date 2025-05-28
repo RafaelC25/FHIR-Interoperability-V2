@@ -1,90 +1,158 @@
-import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Edit, Trash2, Eye, RefreshCw } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import type { Appointment } from '../types/fhir';
+import { 
+  getAppointments, 
+  createAppointment, 
+  updateAppointment, 
+  deleteAppointment,
+  getPatients,
+  getDoctors
+} from '../services/appointments';
 
-const mockAppointments = [
-  {
-    id: '1',
-    patientId: '1',
-    doctorId: '1',
-    date: '2024-03-20T10:00:00',
-    status: 'scheduled' as const
-  }
-];
-
-interface AppointmentFormData {
-  patientId: string;
-  doctorId: string;
-  date: string;
-  status: 'scheduled' | 'completed' | 'cancelled';
+interface Appointment {
+  id: number;
+  paciente_id: number;
+  medico_id: number;
+  fecha_cita: string;
+  motivo: string;
+  estado: string;
+  paciente_nombre: string;
+  medico_nombre: string;
+  especialidad: string;
 }
 
-const emptyFormData: AppointmentFormData = {
-  patientId: '',
-  doctorId: '',
-  date: '',
-  status: 'scheduled'
+interface UserOption {
+  id: number;  // Cambiado a number para coincidir con tu backend
+  name: string;
+}
+
+const emptyFormData = {
+  paciente_id: 0,
+  medico_id: 0,
+  fecha_cita: '',
+  motivo: '',
+  estado: 'Programada'
 };
 
-// Mock data for dropdowns
-const mockPatients = [
-  { id: '1', name: 'Juan Pérez' },
-  { id: '2', name: 'María García' }
-];
-
-const mockDoctors = [
-  { id: '1', name: 'Dr. García' },
-  { id: '2', name: 'Dra. Rodríguez' }
-];
-
-export default function Appointments() {
-  const [appointments, setAppointments] = useState<Appointment[]>(mockAppointments);
+const Appointments = () => {
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [patients, setPatients] = useState<UserOption[]>([]);
+  const [doctors, setDoctors] = useState<UserOption[]>([]);
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
-  const [formData, setFormData] = useState<AppointmentFormData>(emptyFormData);
+  const [formData, setFormData] = useState(emptyFormData);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newAppointment: Appointment = {
-      id: String(Date.now()),
-      ...formData
-    };
-    setAppointments([...appointments, newAppointment]);
-    setFormData(emptyFormData);
-    setIsCreateModalOpen(false);
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const [apps, pats, docs] = await Promise.all([
+        getAppointments(),
+        getPatients(),
+        getDoctors()
+      ]);
+      setAppointments(apps);
+      setPatients(pats);
+      setDoctors(docs);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+      setError('Error al cargar los datos. Por favor, intente nuevamente.');
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    fetchData();
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const newAppointment = await createAppointment({
+        ...formData,
+        paciente_id: Number(formData.paciente_id),
+        medico_id: Number(formData.medico_id)
+      });
+      setAppointments([...appointments, newAppointment]);
+      setFormData(emptyFormData);
+      setIsCreateModalOpen(false);
+      setError(null);
+    } catch (err) {
+      console.error('Error creating appointment:', err);
+      setError(err.message || 'Error al crear la cita. Por favor, intente nuevamente.');
+    }
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedAppointment) return;
     
-    const updatedAppointments = appointments.map(appointment => 
-      appointment.id === selectedAppointment.id ? { ...appointment, ...formData } : appointment
-    );
-    setAppointments(updatedAppointments);
-    setIsEditModalOpen(false);
+    try {
+      const updatedAppointment = await updateAppointment(selectedAppointment.id, {
+        ...formData,
+        paciente_id: Number(formData.paciente_id),
+        medico_id: Number(formData.medico_id) 
+      });
+      const updatedAppointments = appointments.map(appointment => 
+        appointment.id === selectedAppointment.id ? updatedAppointment : appointment
+      );
+      setAppointments(updatedAppointments);
+      setIsEditModalOpen(false);
+      setError(null);
+    } catch (err) {
+      console.error('Error updating appointment:', err);
+      setError(err.message || 'Error al actualizar la cita. Por favor, intente nuevamente.');
+    }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!selectedAppointment) return;
     
-    const updatedAppointments = appointments.filter(appointment => appointment.id !== selectedAppointment.id);
-    setAppointments(updatedAppointments);
-    setIsDeleteDialogOpen(false);
+    try {
+      await deleteAppointment(selectedAppointment.id);
+      const updatedAppointments = appointments.filter(
+        appointment => appointment.id !== selectedAppointment.id
+      );
+      setAppointments(updatedAppointments);
+      setIsDeleteDialogOpen(false);
+      setError(null);
+    } catch (err) {
+      console.error('Error deleting appointment:', err);
+      setError(err.message || 'Error al eliminar la cita. Por favor, intente nuevamente.');
+    }
   };
 
   const openEditModal = (appointment: Appointment) => {
     setSelectedAppointment(appointment);
     setFormData({
-      patientId: appointment.patientId,
-      doctorId: appointment.doctorId,
-      date: appointment.date.slice(0, 16), // Format for datetime-local input
-      status: appointment.status
+      paciente_id: appointment.paciente_id,
+      medico_id: appointment.medico_id,
+      fecha_cita: appointment.fecha_cita.slice(0, 16),
+      motivo: appointment.motivo,
+      estado: appointment.estado
     });
     setIsEditModalOpen(true);
   };
@@ -99,77 +167,107 @@ export default function Appointments() {
     setIsDeleteDialogOpen(true);
   };
 
-  const getPatientName = (id: string) => {
-    return mockPatients.find(p => p.id === id)?.name || 'Paciente no encontrado';
+  const getPatientName = (id: number) => {
+    return patients.find(p => p.id === id)?.name || 'Paciente no encontrado';
   };
 
-  const getDoctorName = (id: string) => {
-    return mockDoctors.find(d => d.id === id)?.name || 'Doctor no encontrado';
+  const getDoctorName = (id: number) => {
+    return doctors.find(d => d.id === id)?.name || 'Doctor no encontrado';
   };
 
-  const AppointmentForm = ({ onSubmit, buttonText }: { onSubmit: (e: React.FormEvent) => void, buttonText: string }) => (
+  const AppointmentForm = ({ 
+    onSubmit, 
+    buttonText 
+  }: { 
+    onSubmit: (e: React.FormEvent) => void, 
+    buttonText: string 
+  }) => (
     <form onSubmit={onSubmit} className="space-y-4">
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+          {error}
+        </div>
+      )}
       <div>
-        <label htmlFor="patientId" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="paciente_id" className="block text-sm font-medium text-gray-700">
           Paciente
         </label>
         <select
-          id="patientId"
-          value={formData.patientId}
-          onChange={e => setFormData({ ...formData, patientId: e.target.value })}
+          id="paciente_id"
+          name="paciente_id"
+          value={formData.paciente_id}
+          onChange={handleInputChange}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
           required
         >
           <option value="">Seleccionar paciente...</option>
-          {mockPatients.map(patient => (
+          {patients.map(patient => (
             <option key={patient.id} value={patient.id}>{patient.name}</option>
           ))}
         </select>
       </div>
       <div>
-        <label htmlFor="doctorId" className="block text-sm font-medium text-gray-700">
-          Doctor
+        <label htmlFor="medico_id" className="block text-sm font-medium text-gray-700">
+          Médico
         </label>
         <select
-          id="doctorId"
-          value={formData.doctorId}
-          onChange={e => setFormData({ ...formData, doctorId: e.target.value })}
+          id="medico_id"
+          name="medico_id"
+          value={formData.medico_id}
+          onChange={handleInputChange}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
           required
         >
-          <option value="">Seleccionar doctor...</option>
-          {mockDoctors.map(doctor => (
+          <option value="">Seleccionar médico...</option>
+          {doctors.map(doctor => (
             <option key={doctor.id} value={doctor.id}>{doctor.name}</option>
           ))}
         </select>
       </div>
       <div>
-        <label htmlFor="date" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="fecha_cita" className="block text-sm font-medium text-gray-700">
           Fecha y Hora
         </label>
         <input
           type="datetime-local"
-          id="date"
-          value={formData.date}
-          onChange={e => setFormData({ ...formData, date: e.target.value })}
+          id="fecha_cita"
+          name="fecha_cita"
+          value={formData.fecha_cita}
+          onChange={handleInputChange}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
           required
         />
       </div>
       <div>
-        <label htmlFor="status" className="block text-sm font-medium text-gray-700">
+        <label htmlFor="motivo" className="block text-sm font-medium text-gray-700">
+          Motivo
+        </label>
+        <input
+          type="text"
+          id="motivo"
+          name="motivo"
+          value={formData.motivo}
+          onChange={handleInputChange}
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          required
+        />
+      </div>
+      <div>
+        <label htmlFor="estado" className="block text-sm font-medium text-gray-700">
           Estado
         </label>
         <select
-          id="status"
-          value={formData.status}
-          onChange={e => setFormData({ ...formData, status: e.target.value as AppointmentFormData['status'] })}
+          id="estado"
+          name="estado"
+          value={formData.estado}
+          onChange={handleInputChange}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
           required
         >
-          <option value="scheduled">Programada</option>
-          <option value="completed">Completada</option>
-          <option value="cancelled">Cancelada</option>
+          <option value="Programada">Programada</option>
+          <option value="Pendiente">Pendiente</option>
+          <option value="Completada">Completada</option>
+          <option value="Cancelada">Cancelada</option>
         </select>
       </div>
       <div className="mt-5 sm:mt-6">
@@ -183,49 +281,97 @@ export default function Appointments() {
     </form>
   );
 
-  return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Citas</h1>
-        <button
-          onClick={() => {
-            setFormData(emptyFormData);
-            setIsCreateModalOpen(true);
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700 transition-colors"
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (error && !isRefreshing) {
+    return (
+      <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative">
+        <p>{error}</p>
+        <button 
+          onClick={handleRefresh}
+          className="mt-2 inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-blue-600 hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
-          <Plus className="w-4 h-4 mr-2" />
-          Nueva Cita
+          <RefreshCw className="mr-2 h-4 w-4" />
+          Reintentar
         </button>
       </div>
+    );
+  }
 
-      <div className="bg-white rounded-lg shadow">
-        <table className="min-w-full">
-          <thead>
-            <tr className="border-b">
+  return (
+    <div className="container mx-auto p-4">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Gestión de Citas Médicas</h1>
+        <div className="flex space-x-2">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="flex items-center px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Actualizar
+          </button>
+          <button
+            onClick={() => {
+              setFormData(emptyFormData);
+              setIsCreateModalOpen(true);
+              setError(null);
+            }}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700 transition-colors"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Nueva Cita
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+          {error}
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead className="bg-gray-50">
+            <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paciente</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Doctor</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Médico</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Motivo</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="bg-white divide-y divide-gray-200">
             {appointments.map((appointment) => (
               <tr key={appointment.id}>
-                <td className="px-6 py-4 whitespace-nowrap">{getPatientName(appointment.patientId)}</td>
-                <td className="px-6 py-4 whitespace-nowrap">{getDoctorName(appointment.doctorId)}</td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  {new Date(appointment.date).toLocaleString()}
+                  {appointment.paciente_nombre}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {appointment.medico_nombre} ({appointment.especialidad})
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {new Date(appointment.fecha_cita).toLocaleString()}
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  {appointment.motivo}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    appointment.status === 'scheduled' ? 'bg-yellow-100 text-yellow-800' :
-                    appointment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                    appointment.estado === 'Programada' ? 'bg-yellow-100 text-yellow-800' :
+                    appointment.estado === 'Completada' ? 'bg-green-100 text-green-800' :
+                    appointment.estado === 'Pendiente' ? 'bg-blue-100 text-blue-800' :
                     'bg-red-100 text-red-800'
                   }`}>
-                    {appointment.status === 'scheduled' ? 'Programada' :
-                     appointment.status === 'completed' ? 'Completada' : 'Cancelada'}
+                    {appointment.estado}
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
@@ -233,18 +379,21 @@ export default function Appointments() {
                     <button
                       onClick={() => openViewModal(appointment)}
                       className="text-gray-600 hover:text-gray-800"
+                      title="Ver detalles"
                     >
                       <Eye className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => openEditModal(appointment)}
                       className="text-blue-600 hover:text-blue-800"
+                      title="Editar"
                     >
                       <Edit className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => openDeleteDialog(appointment)}
                       className="text-red-600 hover:text-red-800"
+                      title="Eliminar"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -254,12 +403,20 @@ export default function Appointments() {
             ))}
           </tbody>
         </table>
+        {appointments.length === 0 && (
+          <div className="px-6 py-4 text-center text-gray-500">
+            No hay citas programadas
+          </div>
+        )}
       </div>
 
       {/* Create Modal */}
       <Modal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setError(null);
+        }}
         title="Crear Nueva Cita"
       >
         <AppointmentForm onSubmit={handleCreateSubmit} buttonText="Crear Cita" />
@@ -268,7 +425,10 @@ export default function Appointments() {
       {/* Edit Modal */}
       <Modal
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setError(null);
+        }}
         title="Editar Cita"
       >
         <AppointmentForm onSubmit={handleEditSubmit} buttonText="Guardar Cambios" />
@@ -284,27 +444,37 @@ export default function Appointments() {
           <div className="space-y-4">
             <div>
               <h4 className="text-sm font-medium text-gray-500">Paciente</h4>
-              <p className="mt-1 text-sm text-gray-900">{getPatientName(selectedAppointment.patientId)}</p>
+              <p className="mt-1 text-sm text-gray-900">
+                {selectedAppointment.paciente_nombre}
+              </p>
             </div>
             <div>
-              <h4 className="text-sm font-medium text-gray-500">Doctor</h4>
-              <p className="mt-1 text-sm text-gray-900">{getDoctorName(selectedAppointment.doctorId)}</p>
+              <h4 className="text-sm font-medium text-gray-500">Médico</h4>
+              <p className="mt-1 text-sm text-gray-900">
+                {selectedAppointment.medico_nombre} ({selectedAppointment.especialidad})
+              </p>
             </div>
             <div>
               <h4 className="text-sm font-medium text-gray-500">Fecha y Hora</h4>
               <p className="mt-1 text-sm text-gray-900">
-                {new Date(selectedAppointment.date).toLocaleString()}
+                {new Date(selectedAppointment.fecha_cita).toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <h4 className="text-sm font-medium text-gray-500">Motivo</h4>
+              <p className="mt-1 text-sm text-gray-900">
+                {selectedAppointment.motivo}
               </p>
             </div>
             <div>
               <h4 className="text-sm font-medium text-gray-500">Estado</h4>
               <span className={`mt-1 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                selectedAppointment.status === 'scheduled' ? 'bg-yellow-100 text-yellow-800' :
-                selectedAppointment.status === 'completed' ? 'bg-green-100 text-green-800' :
+                selectedAppointment.estado === 'Programada' ? 'bg-yellow-100 text-yellow-800' :
+                selectedAppointment.estado === 'Completada' ? 'bg-green-100 text-green-800' :
+                selectedAppointment.estado === 'Pendiente' ? 'bg-blue-100 text-blue-800' :
                 'bg-red-100 text-red-800'
               }`}>
-                {selectedAppointment.status === 'scheduled' ? 'Programada' :
-                 selectedAppointment.status === 'completed' ? 'Completada' : 'Cancelada'}
+                {selectedAppointment.estado}
               </span>
             </div>
           </div>
@@ -321,4 +491,6 @@ export default function Appointments() {
       />
     </div>
   );
-}
+};
+
+export default Appointments;

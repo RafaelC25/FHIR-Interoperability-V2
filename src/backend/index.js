@@ -5,6 +5,8 @@ const mysql = require('mysql2');
 const bodyParser = require('body-parser');
 const doctorsRouter = require('./routes/doctors');
 const patientsRouter = require('./routes/patients');
+const appointmentsRouter = require('./routes/appointments');
+
 
 
 const app = express();
@@ -34,6 +36,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 
 app.use('/api/doctors', doctorsRouter);
 app.use('/api/patients', patientsRouter);
+app.use('/api/appointments', appointmentsRouter);
 
 
 // Middleware
