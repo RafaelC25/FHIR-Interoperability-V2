@@ -30,10 +30,8 @@ export interface Appointment {
 
 export interface Condition {
   id: string;
-  patientId: string;
-  code: string;
-  description: string;
-  severity: 'mild' | 'moderate' | 'severe';
+  nombre: string;
+  descripcion?: string; // Opcional
 }
 
 export interface Medication {

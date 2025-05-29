@@ -1,85 +1,202 @@
-import React, { useState } from 'react';
-import { Plus, Edit, Trash2, Eye } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Plus, Edit, Trash2, Eye, Loader2 } from 'lucide-react';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
-import type { Condition } from '../types/fhir';
+import { 
+  getConditions, 
+  createCondition, 
+  updateCondition, 
+  deleteCondition 
+} from '../services/conditionsService';
 
-const mockConditions = [
-  {
-    id: '1',
-    patientId: '1',
-    code: 'I10',
-    description: 'Hipertensión esencial (primaria)',
-    severity: 'moderate' as const
-  }
-];
+interface Condition {
+  id: string;
+  nombre: string;
+  descripcion?: string;
+}
 
 interface ConditionFormData {
-  patientId: string;
-  code: string;
-  description: string;
-  severity: 'mild' | 'moderate' | 'severe';
+  nombre: string;
+  descripcion?: string;
 }
 
 const emptyFormData: ConditionFormData = {
-  patientId: '',
-  code: '',
-  description: '',
-  severity: 'moderate'
+  nombre: '',
+  descripcion: ''
 };
 
-// Mock data for patient dropdown
-const mockPatients = [
-  { id: '1', name: 'Juan Pérez' },
-  { id: '2', name: 'María García' }
-];
-
 export default function Conditions() {
-  const [conditions, setConditions] = useState<Condition[]>(mockConditions);
+  const [conditions, setConditions] = useState<Condition[]>([]);
   const [selectedCondition, setSelectedCondition] = useState<Condition | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [formData, setFormData] = useState<ConditionFormData>(emptyFormData);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newCondition: Condition = {
-      id: String(Date.now()),
-      ...formData
-    };
+  useEffect(() => {
+  const fetchConditions = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      console.log('Iniciando carga de condiciones...');
+      
+      // Opción 1: Usando fetch directamente para diagnóstico
+      const response = await fetch('http://localhost:3001/api/conditions');
+      console.log('Response status:', response.status);
+      
+      const data = await response.json();
+      console.log('Datos crudos:', data);
+      
+      if (!Array.isArray(data)) {
+        throw new Error(`Se esperaba array pero se recibió: ${typeof data}`);
+      }
+      
+      setConditions(data);
+      
+    } catch (err) {
+      console.error('Error al cargar condiciones:', err);
+      setError(err instanceof Error ? err.message : 'Error desconocido');
+      setConditions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  fetchConditions();
+}, []);
+
+  
+
+  const handleCreateSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setIsSubmitting(true);
+  
+  try {
+    console.log('Creando con datos:', formData);
+    const newCondition = await createCondition({
+      nombre: formData.nombre,
+      descripcion: formData.descripcion
+    });
+    
     setConditions([...conditions, newCondition]);
     setFormData(emptyFormData);
     setIsCreateModalOpen(false);
-  };
-
-  const handleEditSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCondition) return;
+    setError(null);
     
-    const updatedConditions = conditions.map(condition => 
-      condition.id === selectedCondition.id ? { ...condition, ...formData } : condition
-    );
-    setConditions(updatedConditions);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+    console.error('Error en handleCreateSubmit:', errorMessage);
+    setError(`Error al crear: ${errorMessage}`);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!selectedCondition) return;
+  setIsSubmitting(true);
+  
+  try {
+    console.log('Actualizando condición:', selectedCondition.id, 'con:', formData);
+    const updatedCondition = await updateCondition(selectedCondition.id, {
+      nombre: formData.nombre,
+      descripcion: formData.descripcion
+    });
+    
+    setConditions(conditions.map(cond => 
+      cond.id === selectedCondition.id ? updatedCondition : cond
+    ));
     setIsEditModalOpen(false);
-  };
-
-  const handleDelete = () => {
-    if (!selectedCondition) return;
+    setError(null);
     
-    const updatedConditions = conditions.filter(condition => condition.id !== selectedCondition.id);
-    setConditions(updatedConditions);
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+    console.error('Error en handleEditSubmit:', errorMessage);
+    setError(`Error al actualizar: ${errorMessage}`);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+  const handleDelete = async () => {
+  if (!selectedCondition) return;
+  setIsSubmitting(true);
+  
+  try {
+    console.log('Iniciando eliminación para ID:', selectedCondition.id);
+    await deleteCondition(selectedCondition.id);
+    
+    // Actualiza el estado optimista
+    setConditions(prev => prev.filter(cond => cond.id !== selectedCondition.id));
     setIsDeleteDialogOpen(false);
-  };
+    setError(null);
+    
+    console.log('Eliminación exitosa');
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Error desconocido';
+    console.error('Error en handleDelete:', errorMessage);
+    setError(`Error al eliminar: ${errorMessage}`);
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+
+  useEffect(() => {
+    console.log('Estado actual:', {
+      isLoading,
+      error,
+      conditions,
+      conditionsCount: conditions.length
+    });
+  }, [isLoading, error, conditions]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64">
+        <Loader2 className="animate-spin h-12 w-12 text-blue-500 mb-4" />
+        <p className="text-lg">Cargando condiciones médicas...</p>
+        <p className="text-sm text-gray-500 mt-2">Por favor espere</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-md bg-red-50 p-4 mx-4 my-8">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-red-800">Error al cargar datos</h3>
+            <div className="mt-2 text-sm text-red-700">
+              <p>{error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="mt-2 inline-flex items-center px-3 py-1 border border-transparent text-sm leading-4 font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                Reintentar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const openEditModal = (condition: Condition) => {
     setSelectedCondition(condition);
     setFormData({
-      patientId: condition.patientId,
-      code: condition.code,
-      description: condition.description,
-      severity: condition.severity
+      nombre: condition.nombre,
+      descripcion: condition.descripcion
     });
     setIsEditModalOpen(true);
   };
@@ -94,84 +211,101 @@ export default function Conditions() {
     setIsDeleteDialogOpen(true);
   };
 
-  const getPatientName = (id: string) => {
-    return mockPatients.find(p => p.id === id)?.name || 'Paciente no encontrado';
-  };
-
-  const ConditionForm = ({ onSubmit, buttonText }: { onSubmit: (e: React.FormEvent) => void, buttonText: string }) => (
+  const ConditionForm = ({ 
+    onSubmit, 
+    buttonText 
+  }: { 
+    onSubmit: (e: React.FormEvent) => void; 
+    buttonText: string;
+  }) => (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
-        <label htmlFor="patientId" className="block text-sm font-medium text-gray-700">
-          Paciente
-        </label>
-        <select
-          id="patientId"
-          value={formData.patientId}
-          onChange={e => setFormData({ ...formData, patientId: e.target.value })}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          required
-        >
-          <option value="">Seleccionar paciente...</option>
-          {mockPatients.map(patient => (
-            <option key={patient.id} value={patient.id}>{patient.name}</option>
-          ))}
-        </select>
-      </div>
-      <div>
-        <label htmlFor="code" className="block text-sm font-medium text-gray-700">
-          Código
+        <label className="block text-sm font-medium text-gray-700">
+          Nombre <span className="text-red-500">*</span>
         </label>
         <input
           type="text"
-          id="code"
-          value={formData.code}
-          onChange={e => setFormData({ ...formData, code: e.target.value })}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          name="nombre"
+          value={formData.nombre}
+          onChange={(e) => setFormData({...formData, nombre: e.target.value})}
+          className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
           required
+          disabled={isSubmitting}
         />
       </div>
+      
       <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium text-gray-700">
           Descripción
         </label>
         <textarea
-          id="description"
-          value={formData.description}
-          onChange={e => setFormData({ ...formData, description: e.target.value })}
+          name="descripcion"
+          value={formData.descripcion || ''}
+          onChange={(e) => setFormData({...formData, descripcion: e.target.value})}
           rows={3}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          required
+          className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+          disabled={isSubmitting}
         />
       </div>
-      <div>
-        <label htmlFor="severity" className="block text-sm font-medium text-gray-700">
-          Severidad
-        </label>
-        <select
-          id="severity"
-          value={formData.severity}
-          onChange={e => setFormData({ ...formData, severity: e.target.value as ConditionFormData['severity'] })}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          required
+
+      <div className="flex justify-end space-x-3 pt-4">
+        <button
+          type="button"
+          onClick={() => isEditModalOpen ? setIsEditModalOpen(false) : setIsCreateModalOpen(false)}
+          className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          disabled={isSubmitting}
         >
-          <option value="mild">Leve</option>
-          <option value="moderate">Moderada</option>
-          <option value="severe">Severa</option>
-        </select>
-      </div>
-      <div className="mt-5 sm:mt-6">
+          Cancelar
+        </button>
         <button
           type="submit"
-          className="inline-flex w-full justify-center rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          className="inline-flex justify-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          disabled={isSubmitting}
         >
-          {buttonText}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+              Procesando...
+            </>
+          ) : (
+            buttonText
+          )}
         </button>
       </div>
     </form>
   );
 
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="animate-spin h-8 w-8 text-blue-500" />
+        <span className="ml-2">Cargando condiciones médicas...</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-md bg-red-50 p-4">
+        <div className="flex">
+          <div className="flex-shrink-0">
+            <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+            </svg>
+          </div>
+          <div className="ml-3">
+            <h3 className="text-sm font-medium text-red-800">{error}</h3>
+            <div className="mt-2 text-sm text-red-700">
+              <p>Por favor, intenta recargar la página o contacta al soporte técnico.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div>
+    <div className="container mx-auto p-4">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-800">Condiciones Médicas</h1>
         <button
@@ -179,129 +313,159 @@ export default function Conditions() {
             setFormData(emptyFormData);
             setIsCreateModalOpen(true);
           }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center hover:bg-blue-700 transition-colors"
+          className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="-ml-1 mr-2 h-4 w-4" />
           Nueva Condición
         </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow">
-        <table className="min-w-full">
-          <thead>
-            <tr className="border-b">
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Paciente</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descripción</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Severidad</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {conditions.map((condition) => (
-              <tr key={condition.id}>
-                <td className="px-6 py-4 whitespace-nowrap">{getPatientName(condition.patientId)}</td>
-                <td className="px-6 py-4 whitespace-nowrap">{condition.code}</td>
-                <td className="px-6 py-4 whitespace-nowrap">{condition.description}</td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    condition.severity === 'mild' ? 'bg-green-100 text-green-800' :
-                    condition.severity === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {condition.severity === 'mild' ? 'Leve' :
-                     condition.severity === 'moderate' ? 'Moderada' : 'Severa'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => openViewModal(condition)}
-                      className="text-gray-600 hover:text-gray-800"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => openEditModal(condition)}
-                      className="text-blue-600 hover:text-blue-800"
-                    >
-                      <Edit className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => openDeleteDialog(condition)}
-                      className="text-red-600 hover:text-red-800"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+        {conditions.length === 0 ? (
+          <div className="text-center p-8">
+            <svg
+              className="mx-auto h-12 w-12 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">No hay condiciones médicas</h3>
+            <p className="mt-1 text-sm text-gray-500">
+              Comienza creando una nueva condición médica.
+            </p>
+            <div className="mt-6">
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(true)}
+                className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              >
+                <Plus className="-ml-1 mr-2 h-4 w-4" />
+                Nueva Condición
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Nombre
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Descripción
+                  </th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {conditions.map((condition) => (
+                  <tr key={condition.id}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900">{condition.nombre}</div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-gray-500 max-w-xs truncate">
+                        {condition.descripcion || <span className="text-gray-300">Sin descripción</span>}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => openViewModal(condition)}
+                          className="text-blue-600 hover:text-blue-900"
+                          title="Ver detalles"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => openEditModal(condition)}
+                          className="text-yellow-600 hover:text-yellow-900"
+                          title="Editar"
+                        >
+                          <Edit className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => openDeleteDialog(condition)}
+                          className="text-red-600 hover:text-red-900"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      {/* Create Modal */}
+      {/* Modales */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        title="Crear Nueva Condición"
+        title="Crear Nueva Condición Médica"
       >
         <ConditionForm onSubmit={handleCreateSubmit} buttonText="Crear Condición" />
       </Modal>
 
-      {/* Edit Modal */}
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
-        title="Editar Condición"
+        title={`Editar Condición: ${selectedCondition?.nombre || ''}`}
       >
         <ConditionForm onSubmit={handleEditSubmit} buttonText="Guardar Cambios" />
       </Modal>
 
-      {/* View Modal */}
       <Modal
         isOpen={isViewModalOpen}
         onClose={() => setIsViewModalOpen(false)}
-        title="Detalles de la Condición"
+        title={`Detalles de Condición: ${selectedCondition?.nombre || ''}`}
       >
         {selectedCondition && (
           <div className="space-y-4">
             <div>
-              <h4 className="text-sm font-medium text-gray-500">Paciente</h4>
-              <p className="mt-1 text-sm text-gray-900">{getPatientName(selectedCondition.patientId)}</p>
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-gray-500">Código</h4>
-              <p className="mt-1 text-sm text-gray-900">{selectedCondition.code}</p>
+              <h4 className="text-sm font-medium text-gray-500">Nombre</h4>
+              <p className="mt-1 text-sm text-gray-900">{selectedCondition.nombre}</p>
             </div>
             <div>
               <h4 className="text-sm font-medium text-gray-500">Descripción</h4>
-              <p className="mt-1 text-sm text-gray-900">{selectedCondition.description}</p>
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-gray-500">Severidad</h4>
-              <span className={`mt-1 px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                selectedCondition.severity === 'mild' ? 'bg-green-100 text-green-800' :
-                selectedCondition.severity === 'moderate' ? 'bg-yellow-100 text-yellow-800' :
-                'bg-red-100 text-red-800'
-              }`}>
-                {selectedCondition.severity === 'mild' ? 'Leve' :
-                 selectedCondition.severity === 'moderate' ? 'Moderada' : 'Severa'}
-              </span>
+              <p className="mt-1 text-sm text-gray-900 whitespace-pre-line">
+                {selectedCondition.descripcion || 'No especificada'}
+              </p>
             </div>
           </div>
         )}
       </Modal>
 
-      {/* Delete Confirmation Dialog */}
       <ConfirmDialog
-        isOpen={isDeleteDialogOpen}
-        onClose={() => setIsDeleteDialogOpen(false)}
-        onConfirm={handleDelete}
-        title="Eliminar Condición"
-        message="¿Estás seguro de que deseas eliminar esta condición? Esta acción no se puede deshacer."
-      />
+  isOpen={isDeleteDialogOpen}
+  onClose={() => setIsDeleteDialogOpen(false)}
+  onConfirm={handleDelete}
+  title="Confirmar Eliminación"
+  message={`¿Estás seguro de eliminar la condición "${selectedCondition?.nombre}"?`}
+  confirmText={isSubmitting ? (
+    <>
+      <Loader2 className="animate-spin h-4 w-4 mr-2" />
+      Eliminando...
+    </>
+  ) : "Eliminar"}
+  cancelText="Cancelar"
+  isSubmitting={isSubmitting}
+  confirmButtonStyle="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+/>
     </div>
   );
 }

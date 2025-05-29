@@ -6,7 +6,7 @@ const bodyParser = require('body-parser');
 const doctorsRouter = require('./routes/doctors');
 const patientsRouter = require('./routes/patients');
 const appointmentsRouter = require('./routes/appointments');
-
+const conditionsRouter = require('./routes/conditions');
 
 
 const app = express();
@@ -29,7 +29,10 @@ const db = mysql.createConnection({
 //const doctorsRouter = require('./routes/doctors'); 
 
 // Middlewares
-app.use(cors());
+app.use(cors({
+  origin: 'http://localhost:5173', // Ajusta según tu puerto frontend
+  credentials: true
+}));
 app.use(express.json());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -37,7 +40,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use('/api/doctors', doctorsRouter);
 app.use('/api/patients', patientsRouter);
 app.use('/api/appointments', appointmentsRouter);
-
+app.use('/api/conditions', conditionsRouter);
 
 // Middleware
 app.use(express.json());
