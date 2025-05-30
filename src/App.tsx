@@ -7,8 +7,6 @@ import { FhirProvider } from './contexts/FhirContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
-
-
 // Lazy load pages
 const Roles = React.lazy(() => import('./pages/Roles'));
 const Users = React.lazy(() => import('./pages/Users'));
@@ -17,6 +15,7 @@ const Appointments = React.lazy(() => import('./pages/Appointments'));
 const Doctors = React.lazy(() => import('./pages/Doctors'));
 const Conditions = React.lazy(() => import('./pages/Conditions'));
 const Medications = React.lazy(() => import('./pages/Medications'));
+const PatientConditions = React.lazy(() => import('./pages/PatientConditionsPage'));
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) {
   const { user } = useAuth();
@@ -95,6 +94,14 @@ function AppRoutes() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'physician', 'patient']}>
                 <Medications />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/patient-conditions"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'physician', 'patient']}>
+                <PatientConditions />
               </ProtectedRoute>
             }
           />

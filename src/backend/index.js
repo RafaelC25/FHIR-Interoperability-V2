@@ -7,6 +7,8 @@ const doctorsRouter = require('./routes/doctors');
 const patientsRouter = require('./routes/patients');
 const appointmentsRouter = require('./routes/appointments');
 const conditionsRouter = require('./routes/conditions');
+const patientConditionsRoutes = require('./routes/patientConditions');
+
 
 
 const app = express();
@@ -41,6 +43,7 @@ app.use('/api/doctors', doctorsRouter);
 app.use('/api/patients', patientsRouter);
 app.use('/api/appointments', appointmentsRouter);
 app.use('/api/conditions', conditionsRouter);
+app.use('/api', patientConditionsRoutes);
 
 // Middleware
 app.use(express.json());

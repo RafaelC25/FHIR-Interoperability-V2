@@ -16,6 +16,7 @@
   "dependencies": {
     "@ant-design/icons": "^6.0.0",
     "@headlessui/react": "^1.7.18",
+    "@ionic-native/toast": "^5.36.0",
     "antd": "^5.25.3",
     "axios": "^1.9.0",
     "body-parser": "^2.2.0",

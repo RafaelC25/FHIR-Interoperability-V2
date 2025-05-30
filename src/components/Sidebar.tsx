@@ -7,7 +7,8 @@ import {
   Stethoscope,
   Activity,
   Pill,
-  LogOut
+  LogOut,
+  ClipboardList
 } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,18 +21,21 @@ const menuItems = {
     { path: '/appointments', icon: Calendar, label: 'Citas' },
     { path: '/doctors', icon: Stethoscope, label: 'Doctores' },
     { path: '/conditions', icon: Activity, label: 'Condiciones Médicas' },
+    { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones' },
     { path: '/medications', icon: Pill, label: 'Medicamentos' },
   ],
   physician: [
     { path: '/patients', icon: UserCircle, label: 'Pacientes' },
     { path: '/appointments', icon: Calendar, label: 'Citas' },
     { path: '/conditions', icon: Activity, label: 'Condiciones Médicas' },
+    { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones' },
     { path: '/medications', icon: Pill, label: 'Medicamentos' },
   ],
   patient: [
     { path: '/patients', icon: UserCircle, label: 'Pacientes' },
     { path: '/appointments', icon: Calendar, label: 'Citas' },
     { path: '/conditions', icon: Activity, label: 'Condiciones Médicas' },
+    { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones' },
     { path: '/medications', icon: Pill, label: 'Medicamentos' },
   ],
 };
