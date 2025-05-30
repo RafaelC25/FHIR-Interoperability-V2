@@ -4,7 +4,6 @@ import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { useNavigate } from 'react-router-dom';
 
-
 interface User {
   id: number;
   nombre: string;
@@ -19,12 +18,6 @@ interface UserFormData {
   rol_id: number;
   contraseña: string;
   activo: boolean;
-  // Añadir estos nuevos campos
-  especialidad?: string;
-  numero_identificacion?: string;
-  fecha_nacimiento?: string;
-  telefono?: string;
-  direccion?: string;
 }
 
 const roleNames: { [key: number]: string } = {
@@ -38,12 +31,7 @@ const emptyFormData: UserFormData = {
   email: '',
   rol_id: 2,
   contraseña: '',
-  activo: true,
-  especialidad: '',
-  numero_identificacion: '',
-  fecha_nacimiento: '',
-  telefono: '',
-  direccion: ''
+  activo: true
 };
 
 const UserForm = ({ 
@@ -182,20 +170,16 @@ export default function Users() {
     fetchUsers();
   }, []);
 
-const fetchUsers = async () => {
+  const fetchUsers = async () => {
   setIsLoading(true);
   try {
-    const response = await fetch('http://localhost:3001/api/users');
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+    const response = await fetch(`http://localhost:3001/api/users?timestamp=${Date.now()}`);
+    if (!response.ok) throw new Error(`Error ${response.status}`);
     const data = await response.json();
     setUsers(data);
-    setError(null);
   } catch (error) {
-    console.error('Error al cargar usuarios:', error);
-    setError('No se pudieron cargar los usuarios. Intente recargar la página.');
-    // Mantener los datos existentes si hay error
+    console.error('Error fetching users:', error);
+    setError('Error al cargar usuarios');
   } finally {
     setIsLoading(false);
   }
@@ -222,14 +206,13 @@ const fetchUsers = async () => {
     }));
   };
 
-const handleCreateSubmit = async (e: React.FormEvent) => {
+  const handleCreateSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   clearMessages();
   setIsLoading(true);
 
   try {
-    // 1. Crear el usuario en el backend
-    const userResponse = await fetch('http://localhost:3001/api/users', {
+    const response = await fetch('http://localhost:3001/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -241,131 +224,114 @@ const handleCreateSubmit = async (e: React.FormEvent) => {
       }),
     });
 
-    const userData = await userResponse.json();
-
-    if (!userResponse.ok) {
-      throw new Error(userData.message || 'Error al crear usuario');
+    const result = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(result.message || 'Error al crear usuario');
     }
 
-    // 2. Actualizar el estado local inmediatamente (optimistic update)
-    setUsers(prevUsers => [...prevUsers, {
-      id: userData.id,
+    // Actualización optimista + recarga
+    setUsers(prev => [...prev, {
+      id: result.userId || result.id,
       nombre: formData.nombre,
       email: formData.email,
       rol_id: formData.rol_id,
       activo: formData.activo
     }]);
 
-    // 3. Redirigir o mostrar éxito
-    if (formData.rol_id === 2) { // Médico
-      navigate('/doctors/create', { 
-        state: { 
-          user_id: userData.id,
-          userData: {
-            nombre: formData.nombre,
-            email: formData.email
-          }
-        }
-      });
-    } 
-    else if (formData.rol_id === 3) { // Paciente
-      navigate('/patients/create', { 
-        state: { 
-          user_id: userData.id,
-          userData: {
-            nombre: formData.nombre,
-            email: formData.email
-          }
-        }
-      });
-    }
-    else {
-      // Para otros roles (admin, etc.)
-      setSuccess('Usuario creado exitosamente');
-      setFormData(emptyFormData);
-      setIsCreateModalOpen(false);
-      
-      // Recargar datos del servidor para asegurar consistencia
-      await fetchUsers();
-    }
-
+    setSuccess('Usuario creado exitosamente');
+    setFormData(emptyFormData);
+    setIsCreateModalOpen(false);
+    
+    // Recarga adicional para asegurar consistencia
+    await fetchUsers();
+    
   } catch (error) {
-    console.error('Error:', error);
-    setError(error.message || 'Error al crear usuario');
-    
-    // Revertir el optimistic update en caso de error
-    setUsers(prevUsers => prevUsers.filter(user => user.id !== userData?.id));
-    
+    setError(error instanceof Error ? error.message : 'Error al crear usuario');
   } finally {
     setIsLoading(false);
   }
 };
 
   const handleEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedUser) return;
-    clearMessages();
-    setIsLoading(true);
-    
-    try {
-      const dataToSend = {
+  e.preventDefault();
+  if (!selectedUser) return;
+  
+  setIsLoading(true);
+  clearMessages();
+
+  try {
+    const response = await fetch(`http://localhost:3001/api/users/${selectedUser.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         nombre: formData.nombre,
         email: formData.email,
         rol_id: formData.rol_id,
         activo: formData.activo,
         ...(formData.contraseña && { contraseña: formData.contraseña })
-      };
-      
-      const response = await fetch(`http://localhost:3001/api/users/${selectedUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dataToSend),
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Error al actualizar usuario');
-      }
+      }),
+    });
 
-      setSuccess('Usuario actualizado exitosamente');
-      fetchUsers();
-      setTimeout(() => setIsEditModalOpen(false), 1500);
-    } catch (error) {
-      console.error('Error al editar usuario:', error);
-      setError(error.message || 'Error al actualizar usuario');
-    } finally {
-      setIsLoading(false);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Error al actualizar usuario');
     }
-  };
+
+    // Actualización optimista
+    setUsers(prev => prev.map(user => 
+      user.id === selectedUser.id ? {
+        ...user,
+        nombre: formData.nombre,
+        email: formData.email,
+        rol_id: formData.rol_id,
+        activo: formData.activo
+      } : user
+    ));
+
+    setSuccess('Usuario actualizado exitosamente');
+    setTimeout(() => setIsEditModalOpen(false), 1000);
+    
+  } catch (error) {
+    setError(error instanceof Error ? error.message : 'Error al actualizar usuario');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleDelete = async () => {
-    if (!selectedUser) return;
-    clearMessages();
-    setIsLoading(true);
-    
-    try {
-      const response = await fetch(`http://localhost:3001/api/users/${selectedUser.id}`, {
-        method: 'DELETE',
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Error al eliminar usuario');
-      }
+  if (!selectedUser) return;
+  
+  setIsLoading(true);
+  clearMessages();
 
-      setSuccess('Usuario eliminado exitosamente');
-      fetchUsers();
-      setTimeout(() => {
-        setIsDeleteDialogOpen(false);
-        setSelectedUser(null);
-      }, 1500);
-    } catch (error) {
-      console.error('Error al eliminar usuario:', error);
-      setError(error.message || 'Error al eliminar usuario');
-    } finally {
-      setIsLoading(false);
+  try {
+    // Actualización optimista primero
+    setUsers(prev => prev.filter(user => user.id !== selectedUser.id));
+
+    const response = await fetch(`http://localhost:3001/api/users/${selectedUser.id}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Error al eliminar usuario');
     }
-  };
+
+    setSuccess('Usuario eliminado exitosamente');
+    setTimeout(() => {
+      setIsDeleteDialogOpen(false);
+      setSelectedUser(null);
+    }, 1000);
+    
+  } catch (error) {
+    setError(error instanceof Error ? error.message : 'Error al eliminar usuario');
+    // Revertir si falla
+    setUsers(users);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const openEditModal = (user: User) => {
     setSelectedUser(user);
