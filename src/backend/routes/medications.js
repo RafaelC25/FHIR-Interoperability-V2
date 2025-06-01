@@ -211,6 +211,15 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+router.get('/options', async (req, res) => {
+  try {
+    const [rows] = await db.query('SELECT id, nombre, descripcion FROM medicamento ORDER BY nombre');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Error al obtener medicamentos' });
+  }
+});
+
 /**
  * @swagger
  * components:

@@ -9,6 +9,7 @@ const appointmentsRouter = require('./routes/appointments');
 const conditionsRouter = require('./routes/conditions');
 const patientConditionsRoutes = require('./routes/patientConditions');
 const medicationsRouter = require('./routes/medications');
+const patientMedicationsRoutes = require('./routes/patientMedications');
 
 require('dotenv').config();  // Carga las variables de entorno
 const db = require('./db');
@@ -50,6 +51,8 @@ app.use('/api/appointments', appointmentsRouter);
 app.use('/api/conditions', conditionsRouter);
 app.use('/api', patientConditionsRoutes);
 app.use('/api/medications', medicationsRouter);
+//app.use('/api/pacientes-medicamentos', patientMedicationsRoutes);
+app.use('/api/patient-medications', require('./routes/patientMedications'));
 
 // Middleware
 app.use(express.json());

@@ -13,6 +13,7 @@ import {
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
+
 const menuItems = {
   admin: [
     { path: '/roles', icon: UserCog, label: 'Roles' },
@@ -21,22 +22,22 @@ const menuItems = {
     { path: '/appointments', icon: Calendar, label: 'Citas' },
     { path: '/doctors', icon: Stethoscope, label: 'Doctores' },
     { path: '/conditions', icon: Activity, label: 'Condiciones Médicas' },
-    { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones' },
     { path: '/medications', icon: Pill, label: 'Medicamentos' },
+    { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones' },
+    { path: '/patient-medications', icon: ClipboardList, label: 'Asignar Medicamentos' }, // Nueva entrada
   ],
   physician: [
     { path: '/patients', icon: UserCircle, label: 'Pacientes' },
     { path: '/appointments', icon: Calendar, label: 'Citas' },
     { path: '/conditions', icon: Activity, label: 'Condiciones Médicas' },
-    { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones' },
     { path: '/medications', icon: Pill, label: 'Medicamentos' },
+    { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones' },
+    { path: '/patient-medications', icon: ClipboardList, label: 'Asignar Medicamentos' }, // Nueva entrada
   ],
   patient: [
-    { path: '/patients', icon: UserCircle, label: 'Pacientes' },
-    { path: '/appointments', icon: Calendar, label: 'Citas' },
-    { path: '/conditions', icon: Activity, label: 'Condiciones Médicas' },
-    { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones' },
-    { path: '/medications', icon: Pill, label: 'Medicamentos' },
+    { path: '/profile', icon: UserCircle, label: 'Mi Perfil' },
+    { path: '/my-conditions', icon: Activity, label: 'Mis Condiciones' },
+    { path: '/my-medications', icon: ClipboardList, label: 'Mis Medicamentos' }, // Podrías agregar esto también
   ],
 };
 

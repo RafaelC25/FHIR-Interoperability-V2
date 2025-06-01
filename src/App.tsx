@@ -16,6 +16,7 @@ const Doctors = React.lazy(() => import('./pages/Doctors'));
 const Conditions = React.lazy(() => import('./pages/Conditions'));
 const Medications = React.lazy(() => import('./pages/Medications'));
 const PatientConditions = React.lazy(() => import('./pages/PatientConditionsPage'));
+const PatientMedications = React.lazy(() => import('./pages/PatientMedications')); // Nueva importación
 
 function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode, allowedRoles: string[] }) {
   const { user } = useAuth();
@@ -102,6 +103,14 @@ function AppRoutes() {
             element={
               <ProtectedRoute allowedRoles={['admin', 'physician', 'patient']}>
                 <PatientConditions />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/patient-medications" // Nueva ruta
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'physician', 'patient']}>
+                <PatientMedications />
               </ProtectedRoute>
             }
           />

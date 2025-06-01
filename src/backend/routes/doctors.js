@@ -373,4 +373,27 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+router.get('/options', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT m.id, u.nombre 
+      FROM medico m
+      JOIN usuario u ON m.usuario_id = u.id
+      ORDER BY u.nombre
+    `);
+    
+    if (!rows || rows.length === 0) {
+      return res.status(404).json({ message: 'No se encontraron médicos' });
+    }
+    
+    res.json(rows);
+  } catch (err) {
+    console.error('Error en GET /doctors/options:', err);
+    res.status(500).json({ 
+      error: 'Error al cargar médicos',
+      details: err.message
+    });
+  }
+});
+
 module.exports = router;
