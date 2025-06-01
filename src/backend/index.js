@@ -8,6 +8,7 @@ const patientsRouter = require('./routes/patients');
 const appointmentsRouter = require('./routes/appointments');
 const conditionsRouter = require('./routes/conditions');
 const patientConditionsRoutes = require('./routes/patientConditions');
+const medicationsRouter = require('./routes/medications');
 
 require('dotenv').config();  // Carga las variables de entorno
 const db = require('./db');
@@ -36,7 +37,7 @@ const PORT = 3001;
 
 // Middlewares
 app.use(cors({
-  origin: 'http://localhost:5173', // Ajusta según tu puerto frontend
+  origin: 'http://localhost:5173', 
   credentials: true
 }));
 app.use(express.json());
@@ -48,6 +49,7 @@ app.use('/api/patients', patientsRouter);
 app.use('/api/appointments', appointmentsRouter);
 app.use('/api/conditions', conditionsRouter);
 app.use('/api', patientConditionsRoutes);
+app.use('/api/medications', medicationsRouter);
 
 // Middleware
 app.use(express.json());
