@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { User, Plus, Edit, Trash2, Loader2 } from 'lucide-react';
+import { User, Plus, Edit, Trash2, Loader2, Stethoscope } from 'lucide-react';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import {
@@ -9,7 +9,9 @@ import {
   deletePatientCondition,
   getPatientOptions,
   getConditionOptions,
-  PatientWithConditions
+  getDoctorOptions,
+  PatientWithConditions,
+  DoctorOption
 } from '../services/patientConditionsService';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -18,6 +20,7 @@ export default function PatientConditionsPage() {
   const [patientsWithConditions, setPatientsWithConditions] = useState<PatientWithConditions[]>([]);
   const [allPatients, setAllPatients] = useState<{id: string, name: string}[]>([]);
   const [allConditions, setAllConditions] = useState<{id: string, nombre: string}[]>([]);
+  const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -28,11 +31,11 @@ export default function PatientConditionsPage() {
     paciente_nombre?: string;
     condicion_nombre?: string;
   } | null>(null);
-  const [originalDates, setOriginalDates] = useState<Record<string, string>>({});
   
   const [formData, setFormData] = useState({
     paciente_id: '',
     condicion_medica_id: '',
+    medico_id: '',
     fecha_diagnostico: '',
     observaciones: ''
   });
@@ -44,24 +47,16 @@ export default function PatientConditionsPage() {
         setIsLoading(true);
         setError(null);
         
-        const [patientsData, conditionsData, patientsWithConditionsData] = await Promise.all([
+        const [patientsData, conditionsData, doctorsData, patientsWithConditionsData] = await Promise.all([
           getPatientOptions(),
           getConditionOptions(),
+          getDoctorOptions(),
           getPatientsWithConditions()
         ]);
 
-        // Guardar fechas originales
-        const dates: Record<string, string> = {};
-        patientsWithConditionsData.forEach(patient => {
-          patient.condiciones.forEach(cond => {
-            const key = `${patient.paciente_id}-${cond.id}`;
-            dates[key] = cond.fecha_diagnostico || '';
-          });
-        });
-        setOriginalDates(dates);
-        
         setAllPatients(patientsData);
         setAllConditions(conditionsData);
+        setDoctorOptions(doctorsData);
         setPatientsWithConditions(patientsWithConditionsData);
       } catch (err) {
         console.error('Error loading data:', err);
@@ -81,7 +76,6 @@ export default function PatientConditionsPage() {
   };
 
   const handleEdit = (patient: PatientWithConditions, condicion: any) => {
-    const key = `${patient.paciente_id}-${condicion.id}`;
     setCurrentCondition({
       paciente_id: patient.paciente_id,
       condicion_medica_id: condicion.id,
@@ -91,7 +85,8 @@ export default function PatientConditionsPage() {
     setFormData({
       paciente_id: patient.paciente_id.toString(),
       condicion_medica_id: condicion.id.toString(),
-      fecha_diagnostico: originalDates[key] || '',
+      medico_id: condicion.medico_asignador?.id || '',
+      fecha_diagnostico: condicion.fecha_diagnostico || '',
       observaciones: condicion.observaciones || ''
     });
     setIsModalOpen(true);
@@ -102,13 +97,11 @@ export default function PatientConditionsPage() {
     try {
       if (currentCondition?.paciente_id && currentCondition?.condicion_medica_id) {
         // Modo edición
-        const key = `${currentCondition.paciente_id}-${currentCondition.condicion_medica_id}`;
-        const fechaOriginal = originalDates[key];
-        
         await updatePatientCondition(
           currentCondition.paciente_id,
           currentCondition.condicion_medica_id,
           {
+            medico_id: formData.medico_id || null,
             fecha_diagnostico: formData.fecha_diagnostico || null,
             observaciones: formData.observaciones || null
           }
@@ -119,6 +112,7 @@ export default function PatientConditionsPage() {
         await createPatientCondition({
           paciente_id: formData.paciente_id,
           condicion_medica_id: formData.condicion_medica_id,
+          medico_id: formData.medico_id || null,
           fecha_diagnostico: formData.fecha_diagnostico || null,
           observaciones: formData.observaciones || null
         });
@@ -126,23 +120,15 @@ export default function PatientConditionsPage() {
       }
       
       // Recargar datos
-      const [patientsWithConditionsData, conditionsData] = await Promise.all([
+      const [patientsWithConditionsData, conditionsData, doctorsData] = await Promise.all([
         getPatientsWithConditions(),
-        getConditionOptions()
+        getConditionOptions(),
+        getDoctorOptions()
       ]);
-      
-      // Actualizar fechas originales
-      const dates: Record<string, string> = {};
-      patientsWithConditionsData.forEach(patient => {
-        patient.condiciones.forEach(cond => {
-          const key = `${patient.paciente_id}-${cond.id}`;
-          dates[key] = cond.fecha_diagnostico || '';
-        });
-      });
-      setOriginalDates(dates);
       
       setPatientsWithConditions(patientsWithConditionsData);
       setAllConditions(conditionsData);
+      setDoctorOptions(doctorsData);
       setIsModalOpen(false);
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -169,19 +155,31 @@ export default function PatientConditionsPage() {
     }
   };
 
-  const formatDateTime = (dateString: string | undefined) => {
-  if (!dateString) return 'No especificada';
-  
+  const handleCreateCondition = async () => {
   try {
-    const date = new Date(dateString);
-    const formattedDate = date.toISOString().split('T')[0];
-    const formattedTime = date.toISOString().split('T')[1].replace('Z', ' UTC');
-    return `${formattedDate} ${formattedTime}`;
+    const result = await createPatientCondition(formData);
+    console.log('Relación creada:', result);
+    // Ahora result tiene {paciente_id, condicion_medica_id}
+    toast.success('Relación creada correctamente');
+    // Recargar datos o actualizar estado
   } catch (error) {
-    console.error('Error formatting date:', error);
-    return dateString; // Devuelve el valor original si hay error
+    toast.error(error.message);
   }
 };
+
+  const formatDate = (dateString: string | undefined) => {
+    if (!dateString) return 'No especificada';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    } catch (error) {
+      return dateString;
+    }
+  };
 
   if (isLoading) {
     return (
@@ -223,6 +221,7 @@ export default function PatientConditionsPage() {
             setFormData({
               paciente_id: '',
               condicion_medica_id: '',
+              medico_id: '',
               fecha_diagnostico: '',
               observaciones: ''
             });
@@ -286,7 +285,13 @@ export default function PatientConditionsPage() {
                     
                     <div className="mt-2 text-xs text-gray-500 space-y-1">
                       {condicion.fecha_diagnostico && (
-                        <p>Diagnóstico: {formatDateTime(condicion.fecha_diagnostico)}</p>
+                        <p>Diagnóstico: {formatDate(condicion.fecha_diagnostico)}</p>
+                      )}
+                      {condicion.medico_asignador && (
+                        <div className="flex items-center">
+                          <Stethoscope className="h-3 w-3 text-gray-400 mr-1" />
+                          <span>Médico: {condicion.medico_asignador.nombre}</span>
+                        </div>
                       )}
                       {condicion.observaciones && (
                         <p>Observaciones: {condicion.observaciones}</p>
@@ -300,7 +305,6 @@ export default function PatientConditionsPage() {
         </div>
       )}
 
-      {/* Modal para crear/editar */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -355,6 +359,23 @@ export default function PatientConditionsPage() {
             )}
             
             <div>
+              <label className="block text-sm font-medium text-gray-700">Médico Asignado</label>
+              <select
+                name="medico_id"
+                value={formData.medico_id}
+                onChange={handleInputChange}
+                className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Seleccionar médico</option>
+                {doctorOptions.map(doctor => (
+                  <option key={doctor.id} value={doctor.id}>
+                    {doctor.nombre}
+                  </option>
+                ))}
+              </select>
+            </div>
+            
+            <div>
               <label className="block text-sm font-medium text-gray-700">
                 {currentCondition ? 'Nueva Fecha de Diagnóstico' : 'Fecha de Diagnóstico'}
               </label>
@@ -365,11 +386,6 @@ export default function PatientConditionsPage() {
                 onChange={handleInputChange}
                 className="mt-1 block w-full rounded-md border border-gray-300 py-2 px-3 shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
-              {currentCondition && formData.fecha_diagnostico && (
-  <p className="mt-1 text-xs text-gray-500">
-    Fecha actual: {formatDateTime(originalDates[`${currentCondition.paciente_id}-${currentCondition.condicion_medica_id}`])}
-  </p>
-)}
             </div>
             
             <div>
@@ -402,7 +418,6 @@ export default function PatientConditionsPage() {
         </form>
       </Modal>
 
-      {/* Diálogo de confirmación para eliminar */}
       <ConfirmDialog
         isOpen={isDeleteDialogOpen}
         onClose={() => setIsDeleteDialogOpen(false)}
