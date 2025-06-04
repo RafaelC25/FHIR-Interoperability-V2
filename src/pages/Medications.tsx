@@ -5,7 +5,7 @@ import {
   getMedications, 
   updateMedication, 
   deleteMedication 
-} from '../services/medicationService';
+} from '../services/medicationService.ts';
 
 interface Medication {
   id: string;

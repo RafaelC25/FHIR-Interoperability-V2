@@ -78,3 +78,13 @@ export const getMedicationOptions = async (): Promise<MedicationOption[]> => {
   const response = await api.get('/patient-medications/medicamentos/options');
   return response.data;
 };
+
+export interface PatientOption {
+  id: string;
+  nombre: string;
+}
+
+export const getPatientOptions = async (): Promise<PatientOption[]> => {
+  const response = await api.get('/patient-medications/pacientes/options');
+  return response.data;
+};

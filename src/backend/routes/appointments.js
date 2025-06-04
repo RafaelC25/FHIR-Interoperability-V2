@@ -87,36 +87,72 @@ router.get('/', async (req, res) => {
  *         description: Error del servidor
  */
 router.post('/', async (req, res) => {
+  let connection;
   try {
     const { paciente_id, medico_id, fecha_cita, motivo, estado } = req.body;
-    const connection = await db.getConnection();
     
+    // Validaciones básicas
+    if (!paciente_id || !medico_id || !fecha_cita || !motivo) {
+      return res.status(400).json({
+        error: 'Datos incompletos',
+        details: 'Se requieren paciente_id, medico_id, fecha_cita y motivo'
+      });
+    }
+
+    connection = await db.getConnection();
+    
+    // Iniciar transacción para asegurar integridad
+    await connection.beginTransaction();
+
     try {
-      // Verificar que existan paciente y médico
+      // 1. Verificar que existan paciente y médico activos
       const [paciente] = await connection.query(
-        'SELECT p.id FROM paciente p JOIN usuario u ON p.usuario_id = u.id WHERE p.id = ? AND u.activo = 1',
+        `SELECT p.id 
+         FROM paciente p 
+         JOIN usuario u ON p.usuario_id = u.id 
+         WHERE p.id = ? AND u.activo = 1`,
         [paciente_id]
       );
       
       const [medico] = await connection.query(
-        'SELECT m.id FROM medico m JOIN usuario u ON m.usuario_id = u.id WHERE m.id = ? AND u.activo = 1',
+        `SELECT m.id, m.especialidad 
+         FROM medico m 
+         JOIN usuario u ON m.usuario_id = u.id 
+         WHERE m.id = ? AND u.activo = 1`,
         [medico_id]
       );
 
-      if (!paciente.length || !medico.length) {
+      if (!paciente.length) {
+        await connection.rollback();
         return res.status(400).json({
-          error: 'Datos inválidos',
-          details: !paciente.length ? 'Paciente no existe o está inactivo' : 'Médico no existe o está inactivo'
+          error: 'Paciente no válido',
+          details: 'El paciente no existe o está inactivo'
         });
       }
 
-      // Insertar la cita
+      if (!medico.length) {
+        await connection.rollback();
+        return res.status(400).json({
+          error: 'Médico no válido',
+          details: 'El médico no existe o está inactivo'
+        });
+      }
+
+      // 2. Insertar la cita (con manejo explícito de campos)
       const [result] = await connection.query(
-        'INSERT INTO cita (paciente_id, medico_id, fecha_cita, motivo, estado) VALUES (?, ?, ?, ?, ?)',
-        [paciente_id, medico_id, fecha_cita, motivo, estado || 'Programada']
+        `INSERT INTO cita 
+         (paciente_id, medico_id, fecha_cita, motivo, estado) 
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+          paciente_id, 
+          medico_id, 
+          new Date(fecha_cita).toISOString().slice(0, 19).replace('T', ' '),
+          motivo, 
+          estado || 'Programada'
+        ]
       );
 
-      // Obtener la cita recién creada
+      // 3. Obtener la cita recién creada con información completa
       const [newAppointment] = await connection.query(
         `SELECT 
           c.id,
@@ -128,27 +164,50 @@ router.post('/', async (req, res) => {
           up.nombre as paciente_nombre,
           um.nombre as medico_nombre,
           m.especialidad
-        FROM cita c
-        JOIN paciente p ON c.paciente_id = p.id
-        JOIN usuario up ON p.usuario_id = up.id
-        JOIN medico m ON c.medico_id = m.id
-        JOIN usuario um ON m.usuario_id = um.id
-        WHERE c.id = ?`,
+         FROM cita c
+         JOIN paciente p ON c.paciente_id = p.id
+         JOIN usuario up ON p.usuario_id = up.id
+         JOIN medico m ON c.medico_id = m.id
+         JOIN usuario um ON m.usuario_id = um.id
+         WHERE c.id = ?`,
         [result.insertId]
       );
 
-      res.status(201).json(newAppointment[0]);
+      await connection.commit();
+
+      // 4. Responder con la cita creada
+      res.status(201).json({
+        ...newAppointment[0],
+        // Formatear fecha para el frontend
+        fecha_cita: new Date(newAppointment[0].fecha_cita).toISOString()
+      });
       
-    } finally {
-      connection.release();
+    } catch (err) {
+      await connection.rollback();
+      console.error('Error en transacción POST /appointments:', err);
+      
+      // Manejo específico del error de columna desconocida
+      if (err.code === 'ER_BAD_FIELD_ERROR') {
+        return res.status(500).json({
+          error: 'Error de configuración en la base de datos',
+          details: 'Existe un trigger o vista que referencia campos no existentes'
+        });
+      }
+      
+      throw err; // Re-lanzar para el catch externo
     }
-    
   } catch (err) {
     console.error('Error en POST /appointments:', err);
     res.status(500).json({
       error: 'Error al crear cita',
-      details: process.env.NODE_ENV === 'development' ? err.message : undefined
+      details: process.env.NODE_ENV === 'development' ? {
+        message: err.message,
+        code: err.code,
+        sql: err.sql
+      } : undefined
     });
+  } finally {
+    if (connection) connection.release();
   }
 });
 

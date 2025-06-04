@@ -9,16 +9,19 @@ import {
   deletePatientMedication,
   getDoctorOptions,
   getMedicationOptions,
+  getPatientOptions,
   PatientWithMedications,
   MedicationAssignment,
   DoctorOption,
-  MedicationOption
-} from '../services/PatientMedicationsService';
+  MedicationOption,
+  PatientOption
+} from '../services/patientMedicationsService';
 import Modal from '../components/Modal';
 import ConfirmDialog from '../components/ConfirmDialog';
 
 export default function PatientMedicationsPage() {
   const [patientsWithMedications, setPatientsWithMedications] = useState<PatientWithMedications[]>([]);
+  const [patientOptions, setPatientOptions] = useState<PatientOption[]>([]);
   const [doctorOptions, setDoctorOptions] = useState<DoctorOption[]>([]);
   const [medicationOptions, setMedicationOptions] = useState<MedicationOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -33,7 +36,15 @@ export default function PatientMedicationsPage() {
     fecha_original?: string;
   } | null>(null);
 
-  const [formData, setFormData] = useState<MedicationAssignment>({
+  const [formData, setFormData] = useState<{
+    paciente_id: string;
+    medicamento_id: string;
+    medico_id: string;
+    fecha_prescripcion: string;
+    dosis: string;
+    frecuencia: string;
+    observaciones: string;
+  }>({
     paciente_id: '',
     medicamento_id: '',
     medico_id: '',
@@ -50,13 +61,15 @@ export default function PatientMedicationsPage() {
         setIsLoading(true);
         setError(null);
         
-        const [patientsData, doctorsData, medsData] = await Promise.all([
+        const [patientsData, allPatients, doctorsData, medsData] = await Promise.all([
           getPatientsWithMedications(),
+          getPatientOptions(),
           getDoctorOptions(),
           getMedicationOptions()
         ]);
 
         setPatientsWithMedications(patientsData);
+        setPatientOptions(allPatients);
         setDoctorOptions(doctorsData);
         setMedicationOptions(medsData);
       } catch (err) {
@@ -122,15 +135,13 @@ export default function PatientMedicationsPage() {
       }
       
       // Refresh data
-      const [patientsData, doctorsData, medsData] = await Promise.all([
+      const [patientsData, allPatients] = await Promise.all([
         getPatientsWithMedications(),
-        getDoctorOptions(),
-        getMedicationOptions()
+        getPatientOptions()
       ]);
       
       setPatientsWithMedications(patientsData);
-      setDoctorOptions(doctorsData);
-      setMedicationOptions(medsData);
+      setPatientOptions(allPatients);
       setIsModalOpen(false);
     } catch (error) {
       console.error('Error submitting form:', error);
@@ -325,9 +336,9 @@ export default function PatientMedicationsPage() {
                     required
                   >
                     <option value="">Seleccionar paciente</option>
-                    {patientsWithMedications.map(patient => (
-                      <option key={patient.paciente_id} value={patient.paciente_id}>
-                        {patient.paciente_nombre} (ID: {patient.paciente_id})
+                    {patientOptions.map(patient => (
+                      <option key={patient.id} value={patient.id}>
+                        {patient.nombre} (ID: {patient.id})
                       </option>
                     ))}
                   </select>

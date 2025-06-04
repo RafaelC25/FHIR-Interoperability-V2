@@ -283,4 +283,20 @@ router.get('/medicamentos/options', async (req, res) => {
   }
 });
 
+// Obtener todos los pacientes para select
+router.get('/pacientes/options', async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT p.id, u.nombre 
+      FROM paciente p
+      JOIN usuario u ON p.usuario_id = u.id
+      ORDER BY u.nombre
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error('Error al obtener pacientes:', err);
+    res.status(500).json({ error: 'Error al obtener pacientes' });
+  }
+});
+
 module.exports = router;

@@ -1,76 +1,89 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface User {
   id: string;
   username: string;
-  role: 'admin' | 'physician' | 'patient';
+  email: string;
+  role: string; 
+}
+
+interface AuthState {
+  token: string | null;
+  user: User | null;
 }
 
 interface AuthContextType {
-  user: User | null;
-  login: (username: string, role: User['role']) => Promise<void>;
+  auth: AuthState;
+  login: (token: string, userData: User) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
-  loading: boolean; // Para manejar el estado de carga inicial
+  loading: boolean;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType>(null!);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true); // Estado de carga inicial
+  const [auth, setAuth] = useState<AuthState>({
+    token: null,
+    user: null
+  });
+  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Verificar autenticación al cargar
-    const verifyAuth = async () => {
-      try {
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser);
-          
-          // Aquí podrías agregar una verificación con el backend
-          // para confirmar que el token/sesión sigue siendo válida
-          // const isValid = await verifySessionWithBackend(parsedUser);
-          // if (isValid) {
-          setUser(parsedUser);
-          // }
-        }
-      } catch (error) {
-        console.error('Error verifying auth:', error);
-        localStorage.removeItem('user');
-      } finally {
-        setLoading(false);
-      }
-    };
+  const isAuthenticated = !!auth.token;
 
-    verifyAuth();
-  }, []);
-
-  const login = async (username: string, role: User['role']) => {
-    const newUser = { id: Date.now().toString(), username, role };
-    setUser(newUser);
-    localStorage.setItem('user', JSON.stringify(newUser));
-    navigate('/'); // Redirigir después de login exitoso
-  };
+  const login = async (token: string, userData: User) => {
+  localStorage.setItem('authToken', token);
+  localStorage.setItem('userData', JSON.stringify(userData));
+  setAuth({
+    token,
+    user: userData
+  });
+  
+  // Redirigir directamente a /users para todos los roles excepto paciente
+  const redirectPath = userData.role === 'patient' 
+    ? '/medical-history' 
+    : '/users'; // Cambiado a /users
+  navigate(redirectPath);
+};
 
   const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
-    navigate('/login'); // Redirigir a login después de logout
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userData');
+    setAuth({
+      token: null,
+      user: null
+    });
+    navigate('/login');
   };
 
-  const isAuthenticated = !!user;
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    const userData = localStorage.getItem('userData');
+
+    if (token && userData) {
+      try {
+        const parsedUser = JSON.parse(userData) as User;
+        setAuth({
+          token,
+          user: parsedUser
+        });
+      } catch (error) {
+        console.error('Error parsing user data', error);
+        logout();
+      }
+    }
+    setLoading(false);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ 
-      user, 
+      auth, 
       login, 
       logout, 
       isAuthenticated,
-      loading 
+      loading
     }}>
       {children}
     </AuthContext.Provider>
@@ -80,7 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
+    throw new Error('useAuth debe usarse dentro de un AuthProvider');
   }
   return context;
 }

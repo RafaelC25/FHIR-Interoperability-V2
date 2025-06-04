@@ -10,6 +10,9 @@ const conditionsRouter = require('./routes/conditions');
 const patientConditionsRoutes = require('./routes/patientConditions');
 const medicationsRouter = require('./routes/medications');
 const patientMedicationsRoutes = require('./routes/patientMedications');
+const authRoutes = require('./routes/authRoutes');
+const medicalHistoryRoutes = require('./routes/medicalHistory');
+const { authenticate } = require('./middleware/auth');
 
 require('dotenv').config();  // Carga las variables de entorno
 const db = require('./db');
@@ -53,6 +56,27 @@ app.use('/api', patientConditionsRoutes);
 app.use('/api/medications', medicationsRouter);
 //app.use('/api/pacientes-medicamentos', patientMedicationsRoutes);
 app.use('/api/patient-medications', require('./routes/patientMedications'));
+//app.use('/medical-history', medicalHistoryRouter);
+app.use('/api/auth', authRoutes); // Rutas de autenticación
+app.use('/api/medical-history', medicalHistoryRoutes); // Rutas de historia clínica
+
+// Rutas protegidas
+app.use('/api/medical-history', 
+  authenticate('administrador'), // Asegúrate que coincida con el role del token
+  medicalHistoryRoutes
+);
+
+try {
+  app.use('/api/admin', authenticate('administrador'), require('./routes/adminRoutes'));
+} catch (error) {
+  console.warn('Advertencia: Rutas de administración no cargadas');
+}
+
+// Ejemplo de ruta solo para administradores
+// app.use('/api/admin', 
+//   authenticate('administrador'), 
+//   require('./routes/adminRoutes')
+// );
 
 // Middleware
 app.use(express.json());
