@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const router = express.Router();
+require('dotenv').config();
 const mysql = require('mysql2');
 const bodyParser = require('body-parser');
 const doctorsRouter = require('./routes/doctors');
@@ -13,6 +14,7 @@ const patientMedicationsRoutes = require('./routes/patientMedications');
 const authRoutes = require('./routes/authRoutes');
 const medicalHistoryRoutes = require('./routes/medicalHistory');
 const { authenticate } = require('./middleware/auth');
+const pacienteRoutes = require('./routes/pacienteRoutes');
 
 require('dotenv').config();  // Carga las variables de entorno
 const db = require('./db');
@@ -59,6 +61,7 @@ app.use('/api/patient-medications', require('./routes/patientMedications'));
 //app.use('/medical-history', medicalHistoryRouter);
 app.use('/api/auth', authRoutes); // Rutas de autenticación
 app.use('/api/medical-history', medicalHistoryRoutes); // Rutas de historia clínica
+app.use('/api/paciente', pacienteRoutes);
 
 // Rutas protegidas
 app.use('/api/medical-history', 

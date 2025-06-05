@@ -37,6 +37,7 @@ const menuItems: Record<string, MenuItem[]> = {
     { path: '/medical-history', icon: FileText, label: 'Historias Clínicas', exact: true }
   ],
   physician: [
+    { path: '/users', icon: Users, label: 'Usuarios', exact: true },
     { path: '/patients', icon: UserCircle, label: 'Pacientes', exact: true },
     { path: '/appointments', icon: Calendar, label: 'Citas', exact: true },
     { path: '/conditions', icon: Activity, label: 'Condiciones', exact: true },
@@ -46,11 +47,11 @@ const menuItems: Record<string, MenuItem[]> = {
     { path: '/medical-history', icon: FileText, label: 'Historias Clínicas', exact: true }
   ],
   patient: [
-    { path: '/medical-history', icon: FileText, label: 'Mi Historia Clínica', exact: true },
-    { path: '/appointments', icon: Calendar, label: 'Mis Citas', exact: true },
-    { path: '/conditions', icon: Activity, label: 'Mis Condiciones', exact: true },
-    { path: '/medications', icon: Pill, label: 'Mis Medicamentos', exact: true }
-  ]
+  { path: '/patient-medical-history', icon: FileText, label: 'Mi Historia Clínica', exact: true },
+  // { path: '/appointments', icon: Calendar, label: 'Mis Citas', exact: true },
+  // { path: '/conditions', icon: Activity, label: 'Mis Condiciones', exact: true },
+  // { path: '/medications', icon: Pill, label: 'Mis Medicamentos', exact: true }
+]
 };
 
 export default function Sidebar() {

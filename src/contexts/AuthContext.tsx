@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+type UserRole = 'admin' | 'physician' | 'patient';
+
 interface User {
   id: string;
   username: string;
   email: string;
-  role: string; 
+  role: UserRole;
 }
 
 interface AuthState {
@@ -34,19 +36,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isAuthenticated = !!auth.token;
 
   const login = async (token: string, userData: User) => {
-  localStorage.setItem('authToken', token);
-  localStorage.setItem('userData', JSON.stringify(userData));
-  setAuth({
-    token,
-    user: userData
-  });
-  
-  // Redirigir directamente a /users para todos los roles excepto paciente
-  const redirectPath = userData.role === 'patient' 
-    ? '/medical-history' 
-    : '/users'; // Cambiado a /users
+    // Validar roles permitidos
+    const allowedRoles: UserRole[] = ['admin', 'physician', 'patient'];
+    if (!allowedRoles.includes(userData.role)) {
+      throw new Error('Rol de usuario no válido');
+    }
+
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('userData', JSON.stringify(userData));
+    setAuth({
+      token,
+      user: userData
+    });
+    
+    // Redirigir según el rol
+    const redirectPath = {
+    patient: '/patient-medical-history',
+    physician: '/patients',  // Cambiado de '/users' a '/patients'
+    admin: '/users'
+  }[userData.role];
+
   navigate(redirectPath);
-};
+  };
 
   const logout = () => {
     localStorage.removeItem('authToken');
@@ -58,24 +69,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     navigate('/login');
   };
 
+  // Elimina cualquier navigate() dentro del useEffect
   useEffect(() => {
-    const token = localStorage.getItem('authToken');
-    const userData = localStorage.getItem('userData');
+  const token = localStorage.getItem('authToken');
+  const userData = localStorage.getItem('userData');
 
-    if (token && userData) {
-      try {
-        const parsedUser = JSON.parse(userData) as User;
-        setAuth({
-          token,
-          user: parsedUser
-        });
-      } catch (error) {
-        console.error('Error parsing user data', error);
-        logout();
-      }
+  if (token && userData) {
+    try {
+      const parsedUser = JSON.parse(userData) as User;
+      setAuth({ token, user: parsedUser });
+    } catch (error) {
+      console.error('Error parsing user data', error);
+      logout();
     }
-    setLoading(false);
-  }, []);
+  }
+  setLoading(false);
+}, []); // <-- Asegúrate que no tenga dependencias
 
   return (
     <AuthContext.Provider value={{ 

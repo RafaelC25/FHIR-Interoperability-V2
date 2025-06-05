@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticate } = require('../middleware/auth');
 
 router.get('/', async (req, res) => {
   let connection;
@@ -131,6 +132,122 @@ router.get('/', async (req, res) => {
     res.status(500).json({ 
       error: 'Error al obtener historias clínicas',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+});
+
+// En backend/routes/medicalHistory.js
+router.get('/patient/:pacienteId', authenticate('paciente'), async (req, res) => {
+  let connection;
+  try {
+    connection = await db.getConnection();
+    
+    // 1. Verificar que el paciente existe y pertenece al usuario (ya verificado por middleware)
+    const [paciente] = await connection.query(
+      `SELECT p.*, u.nombre as nombre_paciente 
+       FROM paciente p 
+       JOIN usuario u ON p.usuario_id = u.id 
+       WHERE p.id = ?`, 
+      [req.params.pacienteId]
+    );
+
+    if (paciente.length === 0) {
+      return res.status(404).json({ success: false, error: 'Paciente no encontrado' });
+    }
+
+    // 2. Obtener todos los datos médicos en paralelo
+    const [citas, condiciones, medicamentos] = await Promise.all([
+      connection.query(`
+        SELECT c.*, m.especialidad, u.nombre as medico_nombre 
+        FROM cita c
+        LEFT JOIN medico m ON c.medico_id = m.id
+        LEFT JOIN usuario u ON m.usuario_id = u.id
+        WHERE c.paciente_id = ?
+        ORDER BY c.fecha_cita DESC
+      `, [req.params.pacienteId]),
+      
+      connection.query(`
+        SELECT pc.*, cm.nombre as condicion_nombre, cm.descripcion,
+               m.especialidad, u.nombre as medico_nombre
+        FROM paciente_condicion_medica pc
+        JOIN condicion_medica cm ON pc.condicion_medica_id = cm.id
+        LEFT JOIN medico m ON pc.medico_id = m.id
+        LEFT JOIN usuario u ON m.usuario_id = u.id
+        WHERE pc.paciente_id = ?
+        ORDER BY pc.fecha_diagnostico DESC
+      `, [req.params.pacienteId]),
+      
+      connection.query(`
+        SELECT pm.*, m.nombre as medicamento_nombre, m.descripcion,
+               md.especialidad, u.nombre as medico_nombre
+        FROM paciente_medicamento pm
+        JOIN medicamento m ON pm.medicamento_id = m.id
+        LEFT JOIN medico md ON pm.medico_id = md.id
+        LEFT JOIN usuario u ON md.usuario_id = u.id
+        WHERE pm.paciente_id = ?
+        ORDER BY pm.fecha_prescripcion DESC
+      `, [req.params.pacienteId])
+    ]);
+
+    // 3. Formatear respuesta
+    const response = {
+      success: true,
+      data: {
+        paciente: {
+          id: paciente[0].id,
+          nombre: paciente[0].nombre_paciente,
+          identificacion: paciente[0].numero_identificacion,
+          fecha_nacimiento: paciente[0].fecha_nacimiento?.toISOString().split('T')[0] || null,
+          genero: paciente[0].genero,
+          telefono: paciente[0].telefono,
+          direccion: paciente[0].direccion
+        },
+        citas: citas[0].map(c => ({
+          id: c.id,
+          fecha: c.fecha_cita?.toISOString().split('T')[0] || null,
+          motivo: c.motivo,
+          estado: c.estado,
+          medico: c.medico_id ? {
+            nombre: c.medico_nombre,
+            especialidad: c.especialidad
+          } : null
+        })),
+        condiciones: condiciones[0].map(cond => ({
+          id: cond.id,
+          nombre: cond.condicion_nombre,
+          descripcion: cond.descripcion,
+          fecha_diagnostico: cond.fecha_diagnostico?.toISOString().split('T')[0] || null,
+          medico: cond.medico_id ? {
+            nombre: cond.medico_nombre,
+            especialidad: cond.especialidad
+          } : null
+        })),
+        medicamentos: medicamentos[0].map(med => ({
+          id: med.id,
+          medicamento: {
+            nombre: med.medicamento_nombre,
+            descripcion: med.descripcion
+          },
+          fecha_prescripcion: med.fecha_prescripcion?.toISOString().split('T')[0] || null,
+          dosis: med.dosis,
+          frecuencia: med.frecuencia,
+          medico: med.medico_id ? {
+            nombre: med.medico_nombre,
+            especialidad: med.especialidad
+          } : null
+        }))
+      }
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('Error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error al obtener historia clínica' 
     });
   } finally {
     if (connection) connection.release();

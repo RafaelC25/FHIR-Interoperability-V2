@@ -1,11 +1,12 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Layout from './components/Layout';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Login from './pages/Login';
 import { FhirProvider } from './contexts/FhirContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+
 
 // Importaciones de páginas
 const MedicalHistory = React.lazy(() => import('./pages/MedicalHistory'));
@@ -18,6 +19,7 @@ const Conditions = React.lazy(() => import('./pages/Conditions'));
 const Medications = React.lazy(() => import('./pages/Medications'));
 const PatientConditions = React.lazy(() => import('./pages/PatientConditionsPage'));
 const PatientMedications = React.lazy(() => import('./pages/PatientMedications'));
+const PatientMedicalHistory = React.lazy(() => import('./pages/PatientMedicalHistory'));
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { auth } = useAuth();
@@ -40,24 +42,24 @@ function ProtectedRoute({ children, allowedRoles }: { children: React.ReactNode,
 
 function RootRedirect() {
   const { auth, loading } = useAuth();
-  
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
+  const location = useLocation();
+
+  if (loading) return <div>Cargando...</div>;
+
+  if (!auth.token) return <Navigate to="/login" replace />;
+
+  // Solo redirige si está en la raíz ('/')
+  if (location.pathname === '/') {
+    const targetRoute = {
+      admin: '/users',
+      physician: '/patients', // <-- Cambio clave aquí
+      patient: '/patient-medical-history'
+    }[auth.user?.role || 'admin'];
+    
+    return <Navigate to={targetRoute} replace />;
   }
 
-  if (auth.token && auth.user) {
-    // Redirigir siempre a /users para admin/physician
-    const defaultRoute = auth.user.role === 'patient' 
-      ? '/medical-history' 
-      : '/users'; // Cambiado a /users
-    return <Navigate to={defaultRoute} replace />;
-  }
-  
-  return <Navigate to="/login" replace />;
+  return null;
 }
 
 function AppRoutes() {
@@ -73,10 +75,10 @@ function AppRoutes() {
         
         {/* Rutas protegidas */}
         <Route path="/users" element={
-  <ProtectedRoute allowedRoles={['admin', 'physician']}>
-    <Users />
-  </ProtectedRoute>
-} />
+          <ProtectedRoute allowedRoles={['admin', 'physician']}>
+            <Users />
+          </ProtectedRoute>
+        } />
         
         <Route path="/roles" element={
           <ProtectedRoute allowedRoles={['admin']}>
@@ -85,7 +87,7 @@ function AppRoutes() {
         } />
         
         <Route path="/patients" element={
-          <ProtectedRoute allowedRoles={['admin', 'physician', 'patient']}>
+          <ProtectedRoute allowedRoles={['admin', 'physician',]}>
             <Patients />
           </ProtectedRoute>
         } />
@@ -127,8 +129,15 @@ function AppRoutes() {
         } />
         
         <Route path="/medical-history" element={
-          <ProtectedRoute allowedRoles={['admin', 'physician', 'patient']}>
+          <ProtectedRoute allowedRoles={['admin', 'physician']}>
             <MedicalHistory />
+          </ProtectedRoute>
+        } />
+        
+        {/* Fixed route */}
+        <Route path="/patient-medical-history" element={
+          <ProtectedRoute allowedRoles={['patient']}>
+            <PatientMedicalHistory />
           </ProtectedRoute>
         } />
       </Routes>

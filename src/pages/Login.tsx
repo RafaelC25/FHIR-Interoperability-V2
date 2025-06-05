@@ -8,15 +8,22 @@ const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { login, isAuthenticated, loading: authLoading } = useAuth();
+  const { auth, login, isAuthenticated, loading: authLoading } = useAuth(); // Cambiado aquí
   const navigate = useNavigate();
 
   // Redirigir si ya está autenticado
   useEffect(() => {
-    if (isAuthenticated) {
-      navigate('/medical-history');
+    if (isAuthenticated && auth.user?.role) {
+      const roleRoutes: Record<string, string> = {
+        admin: '/users',
+        physician: '/users',
+        patient: '/patient-medical-history'
+      };
+      
+      const route = roleRoutes[auth.user.role] || '/';
+      navigate(route);
     }
-  }, [isAuthenticated, navigate]);
+  }, [isAuthenticated, navigate, auth.user?.role]); // Cambiado aquí
 
   const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
