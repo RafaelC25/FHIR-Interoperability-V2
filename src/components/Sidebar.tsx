@@ -27,14 +27,14 @@ const menuItems: Record<string, MenuItem[]> = {
   admin: [
     { path: '/users', icon: Users, label: 'Usuarios', exact: true },
     { path: '/roles', icon: UserCog, label: 'Roles', exact: true },
-    { path: '/patients', icon: UserCircle, label: 'Pacientes', exact: true },
+    // { path: '/patients', icon: UserCircle, label: 'Pacientes', exact: true },
     { path: '/doctors', icon: Stethoscope, label: 'Médicos', exact: true },
-    { path: '/appointments', icon: Calendar, label: 'Citas', exact: true },
-    { path: '/conditions', icon: Activity, label: 'Condiciones', exact: true },
-    { path: '/medications', icon: Pill, label: 'Medicamentos', exact: true },
-    { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones', exact: true },
-    { path: '/patient-medications', icon: ClipboardList, label: 'Asignar Medicamentos', exact: true },
-    { path: '/medical-history', icon: FileText, label: 'Historias Clínicas', exact: true }
+    // { path: '/appointments', icon: Calendar, label: 'Citas', exact: true },
+    // { path: '/conditions', icon: Activity, label: 'Condiciones', exact: true },
+    // { path: '/medications', icon: Pill, label: 'Medicamentos', exact: true },
+    // { path: '/patient-conditions', icon: ClipboardList, label: 'Asignar Condiciones', exact: true },
+    // { path: '/patient-medications', icon: ClipboardList, label: 'Asignar Medicamentos', exact: true },
+    // { path: '/medical-history', icon: FileText, label: 'Historias Clínicas', exact: true }
   ],
   physician: [
     { path: '/users', icon: Users, label: 'Usuarios', exact: true },

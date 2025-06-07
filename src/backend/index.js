@@ -15,6 +15,10 @@ const authRoutes = require('./routes/authRoutes');
 const medicalHistoryRoutes = require('./routes/medicalHistory');
 const { authenticate } = require('./middleware/auth');
 const pacienteRoutes = require('./routes/pacienteRoutes');
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+
 
 require('dotenv').config();  // Carga las variables de entorno
 const db = require('./db');
@@ -23,8 +27,16 @@ const db = require('./db');
 
 
 const app = express();
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// Sirve archivos estáticos del frontend
+app.use(express.static(path.join(__dirname, '../../dist')));
+
+// Ruta fallback para SPA (React Router)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../../dist/index.html'));
+});
 
 
 // // Conexión a MySQL
